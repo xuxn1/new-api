@@ -571,3 +571,48 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Data:       task.Data,
 	}
 }
+
+func TaskModel2DtoWithCostSaving(task *model.Task) *dto.TaskDto {
+	taskDto := TaskModel2Dto(task)
+	taskDto.CostSavingContext = taskCostSavingContextToDto(task.PrivateData.CostSavingContext)
+	return taskDto
+}
+
+func taskCostSavingContextToDto(context *model.TaskCostSavingContext) *dto.TaskCostSavingContext {
+	if context == nil {
+		return nil
+	}
+	return &dto.TaskCostSavingContext{
+		Enabled:                   context.Enabled,
+		RuleName:                  context.RuleName,
+		OriginalModelName:         context.OriginalModelName,
+		PlannerModelName:          context.PlannerModelName,
+		ExecutorModelName:         context.ExecutorModelName,
+		PlannerUpstreamModelName:  context.PlannerUpstreamModelName,
+		ExecutorUpstreamModelName: context.ExecutorUpstreamModelName,
+		ActualUpstreamModelName:   context.ActualUpstreamModelName,
+		PlannerChannelId:          context.PlannerChannelId,
+		PlannerChannelName:        context.PlannerChannelName,
+		PlannerChannelType:        context.PlannerChannelType,
+		ExecutorChannelId:         context.ExecutorChannelId,
+		ExecutorChannelName:       context.ExecutorChannelName,
+		ExecutorChannelType:       context.ExecutorChannelType,
+		AnalysisInjected:          context.AnalysisInjected,
+		FallbackUsed:              context.FallbackUsed,
+		FallbackReason:            context.FallbackReason,
+		HideResponseModel:         context.HideResponseModel,
+		OriginalPromptTokens:      context.OriginalPromptTokens,
+		PlannerPromptTokens:       context.PlannerPromptTokens,
+		PlannerCompletionTokens:   context.PlannerCompletionTokens,
+		ExecutorPromptTokens:      context.ExecutorPromptTokens,
+		ExecutorCompletionTokens:  context.ExecutorCompletionTokens,
+		RawPromptTokens:           context.RawPromptTokens,
+		RawCompletionTokens:       context.RawCompletionTokens,
+		RawTotalTokens:            context.RawTotalTokens,
+		PlannerEstimatedQuota:     context.PlannerEstimatedQuota,
+		ExecutorEstimatedQuota:    context.ExecutorEstimatedQuota,
+		ActualEstimatedQuota:      context.ActualEstimatedQuota,
+		OriginalBilledQuota:       context.OriginalBilledQuota,
+		SavingQuota:               context.SavingQuota,
+	}
+}

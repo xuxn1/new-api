@@ -142,6 +142,7 @@ export interface LogOtherData {
       original: number
       clamped: number
     }
+    my_cost_saving?: MyCostSavingAdminInfo
   }
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.
@@ -246,6 +247,39 @@ export interface LogOtherData {
   subscription_total?: number
 }
 
+export interface MyCostSavingAdminInfo {
+  enabled?: boolean
+  rule_name?: string
+  original_model?: string
+  planner_model?: string
+  executor_model?: string
+  planner_upstream_model?: string
+  executor_upstream_model?: string
+  actual_upstream_model?: string
+  planner_channel_id?: number
+  planner_channel_name?: string
+  planner_channel_type?: number
+  executor_channel_id?: number
+  executor_channel_name?: string
+  executor_channel_type?: number
+  analysis_injected?: boolean
+  fallback_used?: boolean
+  fallback_reason?: string
+  original_prompt_tokens?: number
+  planner_prompt_tokens?: number
+  planner_completion_tokens?: number
+  executor_prompt_tokens?: number
+  executor_completion_tokens?: number
+  raw_prompt_tokens?: number
+  raw_completion_tokens?: number
+  raw_total_tokens?: number
+  planner_estimated_quota?: number
+  executor_estimated_quota?: number
+  actual_estimated_quota?: number
+  original_billed_quota?: number
+  saving_quota?: number
+}
+
 /**
  * Log statistics data
  */
@@ -295,6 +329,7 @@ export interface TaskLog {
   task_id: string
   action: string // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
   channel_id: number
+  quota?: number
   submit_time: number // seconds
   finish_time?: number // seconds
   progress?: string
@@ -303,8 +338,43 @@ export interface TaskLog {
   fail_reason?: string
   status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, QUEUED, UNKNOWN
   other?: string
+  cost_saving_context?: TaskCostSavingContext
   created_at?: number
   updated_at?: number
+}
+
+export interface TaskCostSavingContext {
+  enabled?: boolean
+  rule_name?: string
+  original_model_name?: string
+  planner_model_name?: string
+  executor_model_name?: string
+  planner_upstream_model_name?: string
+  executor_upstream_model_name?: string
+  actual_upstream_model_name?: string
+  planner_channel_id?: number
+  planner_channel_name?: string
+  planner_channel_type?: number
+  executor_channel_id?: number
+  executor_channel_name?: string
+  executor_channel_type?: number
+  analysis_injected?: boolean
+  fallback_used?: boolean
+  fallback_reason?: string
+  hide_response_model?: boolean
+  original_prompt_tokens?: number
+  planner_prompt_tokens?: number
+  planner_completion_tokens?: number
+  executor_prompt_tokens?: number
+  executor_completion_tokens?: number
+  raw_prompt_tokens?: number
+  raw_completion_tokens?: number
+  raw_total_tokens?: number
+  planner_estimated_quota?: number
+  executor_estimated_quota?: number
+  actual_estimated_quota?: number
+  original_billed_quota?: number
+  saving_quota?: number
 }
 
 // ============================================================================

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
+import type { ReactNode } from 'react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -399,6 +400,89 @@ function BillingBreakdown(props: {
     <DetailSection label={t('Billing Details')}>
       {rows.map((row) => (
         <DetailRow key={row.label} label={row.label} value={row.value} mono />
+      ))}
+    </DetailSection>
+  )
+}
+
+function MyCostSavingDetails(props: {
+  info: NonNullable<LogOtherData['admin_info']>['my_cost_saving']
+}) {
+  const { t } = useTranslation()
+  const info = props.info
+  if (!info) return null
+
+  const rows = [
+    info.rule_name && { label: t('Rule'), value: info.rule_name },
+    info.original_model && {
+      label: t('Request Model'),
+      value: info.original_model,
+      mono: true,
+    },
+    info.planner_model && {
+      label: t('Planner Model'),
+      value: info.planner_model,
+      mono: true,
+    },
+    info.executor_model && {
+      label: t('Execution Model'),
+      value: info.executor_model,
+      mono: true,
+    },
+    info.executor_upstream_model && {
+      label: t('Actual Model'),
+      value: info.executor_upstream_model,
+      mono: true,
+    },
+    info.executor_channel_name && {
+      label: t('Channel'),
+      value: `${info.executor_channel_name}${
+        info.executor_channel_id ? ` (#${info.executor_channel_id})` : ''
+      }`,
+    },
+    info.actual_estimated_quota != null && {
+      label: t('Internal Cost'),
+      value: formatLogQuota(info.actual_estimated_quota),
+      mono: true,
+    },
+    info.original_billed_quota != null && {
+      label: t('Billed Cost'),
+      value: formatLogQuota(info.original_billed_quota),
+      mono: true,
+    },
+    info.saving_quota != null && {
+      label: t('Saved Cost'),
+      value: formatLogQuota(info.saving_quota),
+      mono: true,
+    },
+    info.raw_total_tokens != null && {
+      label: t('Internal Tokens'),
+      value: formatTokens(info.raw_total_tokens),
+      mono: true,
+    },
+  ].filter(Boolean) as Array<{
+    label: string
+    value: ReactNode
+    mono?: boolean
+  }>
+
+  if (rows.length === 0) return null
+
+  return (
+    <DetailSection label={t('my-Cost Saving Details')}>
+      {info.fallback_used && (
+        <DetailRow
+          label={t('Fallback')}
+          value={info.fallback_reason || t('Fallback used')}
+        />
+      )}
+      {rows.map((row) => (
+        <DetailRow
+          key={row.label}
+          label={row.label}
+          value={row.value}
+          mono={row.mono}
+        />
       ))}
     </DetailSection>
   )
@@ -1069,6 +1153,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
             other={other}
             isAdmin={props.isAdmin}
           />
+        )}
+
+        {props.isAdmin && other?.admin_info?.my_cost_saving && (
+          <MyCostSavingDetails info={other.admin_info.my_cost_saving} />
         )}
 
         {/* Tiered pricing breakdown (when billing_mode is tiered_expr) */}

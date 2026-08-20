@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { type TFunction } from 'i18next'
 import {
   Box,
+  Bot,
   CreditCard,
   Layout,
   Settings,
@@ -31,6 +32,7 @@ import { getAuthSectionNavItems } from '@/features/system-settings/auth/section-
 import { getBillingSectionNavItems } from '@/features/system-settings/billing/section-registry.tsx'
 import { getContentSectionNavItems } from '@/features/system-settings/content/section-registry.tsx'
 import { getModelsSectionNavItems } from '@/features/system-settings/models/section-registry.tsx'
+import { getMyCostSavingSectionNavItems } from '@/features/system-settings/my-cost-saving/section-registry.tsx'
 import { getOperationsSectionNavItems } from '@/features/system-settings/operations/section-registry.tsx'
 import { getSecuritySectionNavItems } from '@/features/system-settings/security/section-registry.tsx'
 import { getSiteSectionNavItems } from '@/features/system-settings/site/section-registry.tsx'
@@ -69,6 +71,11 @@ function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
           title: t('Models & Routing'),
           icon: Box,
           items: getModelsSectionNavItems(t),
+        },
+        {
+          title: t('my-Cost Saving'),
+          icon: Bot,
+          items: getMyCostSavingSectionNavItems(t),
         },
         {
           title: t('Security & Limits'),

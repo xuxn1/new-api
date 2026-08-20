@@ -39,11 +39,6 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		c.Set("chat_completion_web_search_context_size", request.WebSearchOptions.SearchContextSize)
 	}
 
-	err = helper.ModelMappedHelper(c, info, request)
-	if err != nil {
-		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
-	}
-
 	includeUsage := true
 	// 判断用户是否需要返回使用情况
 	if request.StreamOptions != nil {
@@ -63,6 +58,15 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	}
 
 	info.ShouldIncludeUsage = includeUsage
+
+	if handled, myCostSavingErr := maybeApplyMyCostSaving(c, info, request, info.GetEstimatePromptTokens()); handled || myCostSavingErr != nil {
+		return myCostSavingErr
+	}
+
+	err = helper.ModelMappedHelper(c, info, request)
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
+	}
 
 	adaptor := GetAdaptor(info.ApiType)
 	if adaptor == nil {

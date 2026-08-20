@@ -24,6 +24,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	if data == "" {
 		return nil
 	}
+	data = relaycommon.HideCostSavingModelInStream(info, data)
 
 	if !forceFormat && !thinkToContent {
 		return helper.StringData(c, data)
@@ -292,6 +293,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
+		responseBody = relaycommon.HideCostSavingModelInBody(info, responseBody)
 		if usageModified {
 			var bodyMap map[string]interface{}
 			err = common.Unmarshal(responseBody, &bodyMap)

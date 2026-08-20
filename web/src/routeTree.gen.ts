@@ -61,6 +61,8 @@ import { Route as AuthenticatedSystemSettingsContentIndexRouteImport } from './r
 import { Route as AuthenticatedSystemSettingsContentSectionRouteImport } from './routes/_authenticated/system-settings/content/$section'
 import { Route as AuthenticatedSystemSettingsModelsIndexRouteImport } from './routes/_authenticated/system-settings/models/index'
 import { Route as AuthenticatedSystemSettingsModelsSectionRouteImport } from './routes/_authenticated/system-settings/models/$section'
+import { Route as AuthenticatedSystemSettingsMyCostSavingIndexRouteImport } from './routes/_authenticated/system-settings/my-cost-saving/index'
+import { Route as AuthenticatedSystemSettingsMyCostSavingSectionRouteImport } from './routes/_authenticated/system-settings/my-cost-saving/$section'
 import { Route as AuthenticatedSystemSettingsOperationsIndexRouteImport } from './routes/_authenticated/system-settings/operations/index'
 import { Route as AuthenticatedSystemSettingsOperationsSectionRouteImport } from './routes/_authenticated/system-settings/operations/$section'
 import { Route as AuthenticatedSystemSettingsSecurityIndexRouteImport } from './routes/_authenticated/system-settings/security/index'
@@ -350,6 +352,18 @@ const AuthenticatedSystemSettingsModelsSectionRoute =
     path: '/models/$section',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
   } as any)
+const AuthenticatedSystemSettingsMyCostSavingIndexRoute =
+  AuthenticatedSystemSettingsMyCostSavingIndexRouteImport.update({
+    id: '/my-cost-saving/',
+    path: '/my-cost-saving',
+    getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
+  } as any)
+const AuthenticatedSystemSettingsMyCostSavingSectionRoute =
+  AuthenticatedSystemSettingsMyCostSavingSectionRouteImport.update({
+    id: '/my-cost-saving/$section',
+    path: '/my-cost-saving/$section',
+    getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
+  } as any)
 const AuthenticatedSystemSettingsOperationsIndexRoute =
   AuthenticatedSystemSettingsOperationsIndexRouteImport.update({
     id: '/operations/',
@@ -434,6 +448,7 @@ export interface FileRoutesByFullPath {
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
   '/system-settings/models/$section': typeof AuthenticatedSystemSettingsModelsSectionRoute
+  '/system-settings/my-cost-saving/$section': typeof AuthenticatedSystemSettingsMyCostSavingSectionRoute
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
@@ -441,6 +456,7 @@ export interface FileRoutesByFullPath {
   '/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
   '/system-settings/models/': typeof AuthenticatedSystemSettingsModelsIndexRoute
+  '/system-settings/my-cost-saving/': typeof AuthenticatedSystemSettingsMyCostSavingIndexRoute
   '/system-settings/operations/': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/system-settings/security/': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/system-settings/site/': typeof AuthenticatedSystemSettingsSiteIndexRoute
@@ -491,6 +507,7 @@ export interface FileRoutesByTo {
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
   '/system-settings/models/$section': typeof AuthenticatedSystemSettingsModelsSectionRoute
+  '/system-settings/my-cost-saving/$section': typeof AuthenticatedSystemSettingsMyCostSavingSectionRoute
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
@@ -498,6 +515,7 @@ export interface FileRoutesByTo {
   '/system-settings/billing': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content': typeof AuthenticatedSystemSettingsContentIndexRoute
   '/system-settings/models': typeof AuthenticatedSystemSettingsModelsIndexRoute
+  '/system-settings/my-cost-saving': typeof AuthenticatedSystemSettingsMyCostSavingIndexRoute
   '/system-settings/operations': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/system-settings/security': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/system-settings/site': typeof AuthenticatedSystemSettingsSiteIndexRoute
@@ -552,6 +570,7 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/_authenticated/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
   '/_authenticated/system-settings/models/$section': typeof AuthenticatedSystemSettingsModelsSectionRoute
+  '/_authenticated/system-settings/my-cost-saving/$section': typeof AuthenticatedSystemSettingsMyCostSavingSectionRoute
   '/_authenticated/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/_authenticated/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/_authenticated/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
@@ -559,6 +578,7 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/_authenticated/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
   '/_authenticated/system-settings/models/': typeof AuthenticatedSystemSettingsModelsIndexRoute
+  '/_authenticated/system-settings/my-cost-saving/': typeof AuthenticatedSystemSettingsMyCostSavingIndexRoute
   '/_authenticated/system-settings/operations/': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/_authenticated/system-settings/security/': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/_authenticated/system-settings/site/': typeof AuthenticatedSystemSettingsSiteIndexRoute
@@ -612,6 +632,7 @@ export interface FileRouteTypes {
     | '/system-settings/billing/$section'
     | '/system-settings/content/$section'
     | '/system-settings/models/$section'
+    | '/system-settings/my-cost-saving/$section'
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
@@ -619,6 +640,7 @@ export interface FileRouteTypes {
     | '/system-settings/billing/'
     | '/system-settings/content/'
     | '/system-settings/models/'
+    | '/system-settings/my-cost-saving/'
     | '/system-settings/operations/'
     | '/system-settings/security/'
     | '/system-settings/site/'
@@ -669,6 +691,7 @@ export interface FileRouteTypes {
     | '/system-settings/billing/$section'
     | '/system-settings/content/$section'
     | '/system-settings/models/$section'
+    | '/system-settings/my-cost-saving/$section'
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
@@ -676,6 +699,7 @@ export interface FileRouteTypes {
     | '/system-settings/billing'
     | '/system-settings/content'
     | '/system-settings/models'
+    | '/system-settings/my-cost-saving'
     | '/system-settings/operations'
     | '/system-settings/security'
     | '/system-settings/site'
@@ -729,6 +753,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/billing/$section'
     | '/_authenticated/system-settings/content/$section'
     | '/_authenticated/system-settings/models/$section'
+    | '/_authenticated/system-settings/my-cost-saving/$section'
     | '/_authenticated/system-settings/operations/$section'
     | '/_authenticated/system-settings/security/$section'
     | '/_authenticated/system-settings/site/$section'
@@ -736,6 +761,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/billing/'
     | '/_authenticated/system-settings/content/'
     | '/_authenticated/system-settings/models/'
+    | '/_authenticated/system-settings/my-cost-saving/'
     | '/_authenticated/system-settings/operations/'
     | '/_authenticated/system-settings/security/'
     | '/_authenticated/system-settings/site/'
@@ -1126,6 +1152,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSystemSettingsModelsSectionRouteImport
       parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
     }
+    '/_authenticated/system-settings/my-cost-saving/': {
+      id: '/_authenticated/system-settings/my-cost-saving/'
+      path: '/my-cost-saving'
+      fullPath: '/system-settings/my-cost-saving/'
+      preLoaderRoute: typeof AuthenticatedSystemSettingsMyCostSavingIndexRouteImport
+      parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
+    }
+    '/_authenticated/system-settings/my-cost-saving/$section': {
+      id: '/_authenticated/system-settings/my-cost-saving/$section'
+      path: '/my-cost-saving/$section'
+      fullPath: '/system-settings/my-cost-saving/$section'
+      preLoaderRoute: typeof AuthenticatedSystemSettingsMyCostSavingSectionRouteImport
+      parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
+    }
     '/_authenticated/system-settings/operations/': {
       id: '/_authenticated/system-settings/operations/'
       path: '/operations'
@@ -1203,6 +1243,7 @@ interface AuthenticatedSystemSettingsRouteRouteChildren {
   AuthenticatedSystemSettingsBillingSectionRoute: typeof AuthenticatedSystemSettingsBillingSectionRoute
   AuthenticatedSystemSettingsContentSectionRoute: typeof AuthenticatedSystemSettingsContentSectionRoute
   AuthenticatedSystemSettingsModelsSectionRoute: typeof AuthenticatedSystemSettingsModelsSectionRoute
+  AuthenticatedSystemSettingsMyCostSavingSectionRoute: typeof AuthenticatedSystemSettingsMyCostSavingSectionRoute
   AuthenticatedSystemSettingsOperationsSectionRoute: typeof AuthenticatedSystemSettingsOperationsSectionRoute
   AuthenticatedSystemSettingsSecuritySectionRoute: typeof AuthenticatedSystemSettingsSecuritySectionRoute
   AuthenticatedSystemSettingsSiteSectionRoute: typeof AuthenticatedSystemSettingsSiteSectionRoute
@@ -1210,6 +1251,7 @@ interface AuthenticatedSystemSettingsRouteRouteChildren {
   AuthenticatedSystemSettingsBillingIndexRoute: typeof AuthenticatedSystemSettingsBillingIndexRoute
   AuthenticatedSystemSettingsContentIndexRoute: typeof AuthenticatedSystemSettingsContentIndexRoute
   AuthenticatedSystemSettingsModelsIndexRoute: typeof AuthenticatedSystemSettingsModelsIndexRoute
+  AuthenticatedSystemSettingsMyCostSavingIndexRoute: typeof AuthenticatedSystemSettingsMyCostSavingIndexRoute
   AuthenticatedSystemSettingsOperationsIndexRoute: typeof AuthenticatedSystemSettingsOperationsIndexRoute
   AuthenticatedSystemSettingsSecurityIndexRoute: typeof AuthenticatedSystemSettingsSecurityIndexRoute
   AuthenticatedSystemSettingsSiteIndexRoute: typeof AuthenticatedSystemSettingsSiteIndexRoute
@@ -1227,6 +1269,8 @@ const AuthenticatedSystemSettingsRouteRouteChildren: AuthenticatedSystemSettings
       AuthenticatedSystemSettingsContentSectionRoute,
     AuthenticatedSystemSettingsModelsSectionRoute:
       AuthenticatedSystemSettingsModelsSectionRoute,
+    AuthenticatedSystemSettingsMyCostSavingSectionRoute:
+      AuthenticatedSystemSettingsMyCostSavingSectionRoute,
     AuthenticatedSystemSettingsOperationsSectionRoute:
       AuthenticatedSystemSettingsOperationsSectionRoute,
     AuthenticatedSystemSettingsSecuritySectionRoute:
@@ -1241,6 +1285,8 @@ const AuthenticatedSystemSettingsRouteRouteChildren: AuthenticatedSystemSettings
       AuthenticatedSystemSettingsContentIndexRoute,
     AuthenticatedSystemSettingsModelsIndexRoute:
       AuthenticatedSystemSettingsModelsIndexRoute,
+    AuthenticatedSystemSettingsMyCostSavingIndexRoute:
+      AuthenticatedSystemSettingsMyCostSavingIndexRoute,
     AuthenticatedSystemSettingsOperationsIndexRoute:
       AuthenticatedSystemSettingsOperationsIndexRoute,
     AuthenticatedSystemSettingsSecurityIndexRoute:

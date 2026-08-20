@@ -166,7 +166,15 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:
 		if info.ShouldIncludeUsage && !containStreamUsage {
-			response := helper.GenerateFinalUsageResponse(responseId, createAt, model, *usage)
+			visibleModel := model
+			if modelName := info.VisibleModelName(); modelName != "" {
+				visibleModel = modelName
+			}
+			visibleUsage := relaycommon.CostSavingVisibleUsage(info, usage)
+			if visibleUsage == nil {
+				visibleUsage = &dto.Usage{}
+			}
+			response := helper.GenerateFinalUsageResponse(responseId, createAt, visibleModel, *visibleUsage)
 			response.SetSystemFingerprint(systemFingerprint)
 			helper.ObjectData(c, response)
 		}

@@ -406,6 +406,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	adminRejectReason := common.GetContextKeyString(ctx, constant.ContextKeyAdminRejectReason)
 	summary := calculateTextQuotaSummary(ctx, relayInfo, billingUsage)
+	if relayInfo.CostSaving != nil {
+		relayInfo.CostSaving.OriginalBilledQuota = summary.Quota
+	}
 
 	var tieredResult *billingexpr.TieredResult
 	tieredBillingApplied := false
@@ -420,6 +423,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			tieredResult = tieredRes
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
 		}
+	}
+	if relayInfo.CostSaving != nil {
+		relayInfo.CostSaving.OriginalBilledQuota = summary.Quota
 	}
 
 	for _, item := range summary.ToolSurchargeItems {

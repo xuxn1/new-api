@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
@@ -87,6 +87,30 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
         clips={clips as AudioClip[]}
       />
     </>
+  )
+}
+
+function CostSavingQuotaCell(props: {
+  value?: number
+  fallback?: number
+  positive?: boolean
+}) {
+  const quota = props.value ?? props.fallback
+  if (quota == null) {
+    return <span className='text-muted-foreground/60 text-xs'>-</span>
+  }
+
+  return (
+    <span
+      className={cn(
+        'font-mono text-xs tabular-nums',
+        props.positive && quota > 0
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-foreground'
+      )}
+    >
+      {formatLogQuota(quota)}
+    </span>
   )
 }
 
@@ -160,6 +184,80 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         )
       },
     })
+  }
+
+  if (isAdmin) {
+    columns.push(
+      {
+        id: 'execution_model',
+        header: t('Execution Model'),
+        accessorFn: (row) =>
+          row.cost_saving_context?.executor_model_name ||
+          row.cost_saving_context?.actual_upstream_model_name ||
+          '',
+        cell: ({ row }) => {
+          const context = row.original.cost_saving_context
+          const model =
+            context?.executor_model_name || context?.actual_upstream_model_name
+          if (!model) {
+            return <span className='text-muted-foreground/60 text-xs'>-</span>
+          }
+          return (
+            <div className='flex max-w-[170px] flex-col gap-0.5'>
+              <StatusBadge
+                label={model}
+                variant='neutral'
+                size='sm'
+                className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
+              />
+              {context?.planner_model_name ? (
+                <span className='text-muted-foreground/60 truncate text-[11px]'>
+                  {t('Planner')}: {context.planner_model_name}
+                </span>
+              ) : null}
+            </div>
+          )
+        },
+        size: 180,
+      },
+      {
+        id: 'billed_cost',
+        header: t('Billed Cost'),
+        accessorFn: (row) =>
+          row.cost_saving_context?.original_billed_quota ?? row.quota ?? 0,
+        cell: ({ row }) => (
+          <CostSavingQuotaCell
+            value={row.original.cost_saving_context?.original_billed_quota}
+            fallback={row.original.quota}
+          />
+        ),
+        size: 120,
+      },
+      {
+        id: 'internal_cost',
+        header: t('Internal Cost'),
+        accessorFn: (row) =>
+          row.cost_saving_context?.actual_estimated_quota ?? 0,
+        cell: ({ row }) => (
+          <CostSavingQuotaCell
+            value={row.original.cost_saving_context?.actual_estimated_quota}
+          />
+        ),
+        size: 120,
+      },
+      {
+        id: 'saved_cost',
+        header: t('Saved Cost'),
+        accessorFn: (row) => row.cost_saving_context?.saving_quota ?? 0,
+        cell: ({ row }) => (
+          <CostSavingQuotaCell
+            value={row.original.cost_saving_context?.saving_quota}
+            positive
+          />
+        ),
+        size: 120,
+      }
+    )
   }
 
   columns.push(

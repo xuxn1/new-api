@@ -58,6 +58,7 @@ type ResponsesUsageInfo struct {
 type ChannelMeta struct {
 	ChannelType          int
 	ChannelId            int
+	ChannelName          string
 	ChannelIsMultiKey    bool
 	ChannelMultiKeyIndex int
 	ChannelBaseUrl       string
@@ -151,6 +152,8 @@ type RelayInfo struct {
 
 	PriceData hosttypes.PriceData
 
+	CostSaving *CostSavingInfo
+
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
 	// int32 bound (or NaN fallback) while computing this request's charge.
 	// It is surfaced onto the consume/task log's admin_info for auditing.
@@ -185,6 +188,49 @@ type RelayInfo struct {
 	*TaskRelayInfo
 }
 
+type CostSavingInfo struct {
+	Enabled                   bool
+	RuleName                  string
+	OriginalModelName         string
+	PlannerModelName          string
+	ExecutorModelName         string
+	PlannerUpstreamModelName  string
+	ExecutorUpstreamModelName string
+	ActualUpstreamModelName   string
+	PlannerChannelId          int
+	PlannerChannelName        string
+	PlannerChannelType        int
+	ExecutorChannelId         int
+	ExecutorChannelName       string
+	ExecutorChannelType       int
+	AnalysisInjected          bool
+	FallbackUsed              bool
+	FallbackReason            string
+	HideResponseModel         bool
+	OriginalPromptTokens      int
+	PlannerPromptTokens       int
+	PlannerCompletionTokens   int
+	ExecutorPromptTokens      int
+	ExecutorCompletionTokens  int
+	RawPromptTokens           int
+	RawCompletionTokens       int
+	RawTotalTokens            int
+	PlannerEstimatedQuota     int
+	ExecutorEstimatedQuota    int
+	ActualEstimatedQuota      int
+	OriginalBilledQuota       int
+}
+
+func (info *RelayInfo) VisibleModelName() string {
+	if info == nil {
+		return ""
+	}
+	if info.CostSaving != nil && info.CostSaving.HideResponseModel && info.CostSaving.OriginalModelName != "" {
+		return info.CostSaving.OriginalModelName
+	}
+	return info.UpstreamModelName
+}
+
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
@@ -193,6 +239,7 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	channelMeta := &ChannelMeta{
 		ChannelType:          channelType,
 		ChannelId:            common.GetContextKeyInt(c, constant.ContextKeyChannelId),
+		ChannelName:          common.GetContextKeyString(c, constant.ContextKeyChannelName),
 		ChannelIsMultiKey:    common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey),
 		ChannelMultiKeyIndex: common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex),
 		ChannelBaseUrl:       common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl),
@@ -346,6 +393,10 @@ var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypeSub2API:        true,
 	constant.ChannelTypeNewAPI:         true,
 	constant.ChannelTypeTencent:        true,
+}
+
+func GetStreamSupportedChannels() map[int]bool {
+	return streamSupportedChannels
 }
 
 func GenRelayInfoWs(c *gin.Context, ws *websocket.Conn) *RelayInfo {

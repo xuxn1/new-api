@@ -109,6 +109,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	AppendChannelAffinityAdminInfo(ctx, adminInfo)
 
 	other["admin_info"] = adminInfo
+	appendCostSavingInfo(relayInfo, other)
 	appendRequestPath(ctx, relayInfo, other)
 	appendRequestConversionChain(relayInfo, other)
 	appendFinalRequestFormat(relayInfo, other)
@@ -116,6 +117,72 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
 	return other
+}
+
+func appendCostSavingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || relayInfo.CostSaving == nil || other == nil {
+		return
+	}
+	info := relayInfo.CostSaving
+	if !info.Enabled && !info.FallbackUsed {
+		return
+	}
+	adminInfo, ok := other["admin_info"].(map[string]interface{})
+	if !ok || adminInfo == nil {
+		adminInfo = map[string]interface{}{}
+		other["admin_info"] = adminInfo
+	}
+	originalBilledQuota := info.OriginalBilledQuota
+	if originalBilledQuota == 0 {
+		originalBilledQuota = relayInfo.FinalPreConsumedQuota
+	}
+	executorEstimatedQuota := info.ExecutorEstimatedQuota
+	actualEstimatedQuota := info.ActualEstimatedQuota
+	if actualEstimatedQuota == 0 {
+		actualEstimatedQuota = executorEstimatedQuota + info.PlannerEstimatedQuota
+	}
+	if info.FallbackUsed {
+		actualEstimatedQuota = originalBilledQuota
+	}
+	savingQuota := originalBilledQuota - actualEstimatedQuota
+	if savingQuota < 0 {
+		savingQuota = 0
+	}
+	costSaving := map[string]interface{}{
+		"enabled":                    info.Enabled,
+		"rule_name":                  info.RuleName,
+		"original_model":             info.OriginalModelName,
+		"planner_model":              info.PlannerModelName,
+		"executor_model":             info.ExecutorModelName,
+		"planner_upstream_model":     info.PlannerUpstreamModelName,
+		"executor_upstream_model":    info.ExecutorUpstreamModelName,
+		"actual_upstream_model":      info.ActualUpstreamModelName,
+		"planner_channel_id":         info.PlannerChannelId,
+		"planner_channel_name":       info.PlannerChannelName,
+		"planner_channel_type":       info.PlannerChannelType,
+		"executor_channel_id":        info.ExecutorChannelId,
+		"executor_channel_name":      info.ExecutorChannelName,
+		"executor_channel_type":      info.ExecutorChannelType,
+		"analysis_injected":          info.AnalysisInjected,
+		"fallback_used":              info.FallbackUsed,
+		"original_prompt_tokens":     info.OriginalPromptTokens,
+		"planner_prompt_tokens":      info.PlannerPromptTokens,
+		"planner_completion_tokens":  info.PlannerCompletionTokens,
+		"executor_prompt_tokens":     info.ExecutorPromptTokens,
+		"executor_completion_tokens": info.ExecutorCompletionTokens,
+		"raw_prompt_tokens":          info.RawPromptTokens,
+		"raw_completion_tokens":      info.RawCompletionTokens,
+		"raw_total_tokens":           info.RawTotalTokens,
+		"planner_estimated_quota":    info.PlannerEstimatedQuota,
+		"executor_estimated_quota":   executorEstimatedQuota,
+		"actual_estimated_quota":     actualEstimatedQuota,
+		"original_billed_quota":      originalBilledQuota,
+		"saving_quota":               savingQuota,
+	}
+	if info.FallbackReason != "" {
+		costSaving["fallback_reason"] = info.FallbackReason
+	}
+	adminInfo["my_cost_saving"] = costSaving
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

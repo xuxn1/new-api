@@ -105,11 +105,12 @@ type TaskPrivateData struct {
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
-	BillingSource  string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
-	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
-	TokenId        int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
-	NodeName       string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
-	BillingContext *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
+	BillingSource     string                 `json:"billing_source,omitempty"`      // "wallet" 或 "subscription"
+	SubscriptionId    int                    `json:"subscription_id,omitempty"`     // 订阅 ID，用于订阅退款
+	TokenId           int                    `json:"token_id,omitempty"`            // 令牌 ID，用于令牌额度退款
+	NodeName          string                 `json:"node_name,omitempty"`           // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
+	BillingContext    *TaskBillingContext    `json:"billing_context,omitempty"`     // 计费参数快照（用于轮询阶段重新计算）
+	CostSavingContext *TaskCostSavingContext `json:"cost_saving_context,omitempty"` // 降本执行快照（用于任务日志）
 }
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
@@ -120,6 +121,41 @@ type TaskBillingContext struct {
 	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
 	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
 	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
+}
+
+// TaskCostSavingContext 记录降本任务的执行快照，供任务日志展示。
+type TaskCostSavingContext struct {
+	Enabled                   bool   `json:"enabled,omitempty"`
+	RuleName                  string `json:"rule_name,omitempty"`
+	OriginalModelName         string `json:"original_model_name,omitempty"`
+	PlannerModelName          string `json:"planner_model_name,omitempty"`
+	ExecutorModelName         string `json:"executor_model_name,omitempty"`
+	PlannerUpstreamModelName  string `json:"planner_upstream_model_name,omitempty"`
+	ExecutorUpstreamModelName string `json:"executor_upstream_model_name,omitempty"`
+	ActualUpstreamModelName   string `json:"actual_upstream_model_name,omitempty"`
+	PlannerChannelId          int    `json:"planner_channel_id,omitempty"`
+	PlannerChannelName        string `json:"planner_channel_name,omitempty"`
+	PlannerChannelType        int    `json:"planner_channel_type,omitempty"`
+	ExecutorChannelId         int    `json:"executor_channel_id,omitempty"`
+	ExecutorChannelName       string `json:"executor_channel_name,omitempty"`
+	ExecutorChannelType       int    `json:"executor_channel_type,omitempty"`
+	AnalysisInjected          bool   `json:"analysis_injected,omitempty"`
+	FallbackUsed              bool   `json:"fallback_used,omitempty"`
+	FallbackReason            string `json:"fallback_reason,omitempty"`
+	HideResponseModel         bool   `json:"hide_response_model,omitempty"`
+	OriginalPromptTokens      int    `json:"original_prompt_tokens,omitempty"`
+	PlannerPromptTokens       int    `json:"planner_prompt_tokens,omitempty"`
+	PlannerCompletionTokens   int    `json:"planner_completion_tokens,omitempty"`
+	ExecutorPromptTokens      int    `json:"executor_prompt_tokens,omitempty"`
+	ExecutorCompletionTokens  int    `json:"executor_completion_tokens,omitempty"`
+	RawPromptTokens           int    `json:"raw_prompt_tokens,omitempty"`
+	RawCompletionTokens       int    `json:"raw_completion_tokens,omitempty"`
+	RawTotalTokens            int    `json:"raw_total_tokens,omitempty"`
+	PlannerEstimatedQuota     int    `json:"planner_estimated_quota,omitempty"`
+	ExecutorEstimatedQuota    int    `json:"executor_estimated_quota,omitempty"`
+	ActualEstimatedQuota      int    `json:"actual_estimated_quota,omitempty"`
+	OriginalBilledQuota       int    `json:"original_billed_quota,omitempty"`
+	SavingQuota               int    `json:"saving_quota,omitempty"`
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）
