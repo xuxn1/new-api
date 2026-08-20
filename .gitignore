@@ -10,7 +10,6 @@ build
 logs
 web/dist
 web/node_modules
-.env
 one-api
 new-api
 /__debug_bin*
