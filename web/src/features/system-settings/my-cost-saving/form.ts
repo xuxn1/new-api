@@ -29,9 +29,6 @@ export type MyCostSavingRuleForm = {
   models: string[]
   strategy: MyCostSavingRuleStrategy
   planner_model: string
-  executor_model: string
-  complex_model: string
-  max_low_cost_tokens: number
   cache_mode: MyCostSavingRuleCacheMode
   cache_ttl_seconds: number
   cache_scope: MyCostSavingRuleCacheScope
@@ -74,11 +71,8 @@ export const DEFAULT_MY_COST_SAVING_RULE: MyCostSavingRuleForm = {
   name: '',
   groups: [],
   models: [],
-  strategy: 'auto',
+  strategy: 'direct',
   planner_model: '',
-  executor_model: '',
-  complex_model: '',
-  max_low_cost_tokens: 2000,
   cache_mode: 'global',
   cache_ttl_seconds: 600,
   cache_scope: 'group',
@@ -164,10 +158,9 @@ function parsePersistedRule(raw: unknown): MyCostSavingRuleForm | null {
     groups: normalizeStringList(value.groups),
     models: normalizeStringList(value.models),
     strategy: normalizeStrategy(value.strategy),
-    planner_model: asTrimmedString(value.planner_model),
-    executor_model: asTrimmedString(value.executor_model),
-    complex_model: asTrimmedString(value.complex_model),
-    max_low_cost_tokens: asNonNegativeInt(value.max_low_cost_tokens),
+    planner_model:
+      asTrimmedString(value.analysis_model) ||
+      asTrimmedString(value.planner_model),
     cache_mode: normalizeCacheModeFromPersisted(
       value.cache_enabled ?? value.cache_mode
     ),
@@ -268,22 +261,7 @@ function serializeMyCostSavingRule(
 
   const plannerModel = asTrimmedString(rule.planner_model)
   if (plannerModel) {
-    serialized.planner_model = plannerModel
-  }
-
-  const executorModel = asTrimmedString(rule.executor_model)
-  if (executorModel) {
-    serialized.executor_model = executorModel
-  }
-
-  const complexModel = asTrimmedString(rule.complex_model)
-  if (complexModel) {
-    serialized.complex_model = complexModel
-  }
-
-  const maxLowCostTokens = asNonNegativeInt(rule.max_low_cost_tokens)
-  if (maxLowCostTokens > 0) {
-    serialized.max_low_cost_tokens = maxLowCostTokens
+    serialized.analysis_model = plannerModel
   }
 
   const cacheMode = normalizeCacheMode(rule.cache_mode)

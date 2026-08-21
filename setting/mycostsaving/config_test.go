@@ -52,6 +52,7 @@ func TestMatchRuleMatchesGroupAndModel(t *testing.T) {
 	assert.Equal(t, "auto", match.Strategy)
 	assert.Equal(t, "gpt-5.4-mini", match.PlannerModel)
 	assert.Equal(t, "gpt-5.4-mini", match.ExecutorModel)
+	assert.True(t, match.LegacyExecution)
 	assert.True(t, match.CacheEnabled)
 	assert.Equal(t, 600, match.CacheTTLSeconds)
 
@@ -77,6 +78,7 @@ func TestMatchRuleDefaultsToDirectStrategy(t *testing.T) {
 	assert.Equal(t, "direct", match.Strategy)
 	assert.Equal(t, "gpt-5.4-mini", match.PlannerModel)
 	assert.Equal(t, "gpt-5.4-mini", match.ExecutorModel)
+	assert.True(t, match.LegacyExecution)
 }
 
 func TestMatchRulePlannerFallsBackToOriginalModel(t *testing.T) {
@@ -94,4 +96,24 @@ func TestMatchRulePlannerFallsBackToOriginalModel(t *testing.T) {
 	assert.Equal(t, "planner", match.Strategy)
 	assert.Equal(t, "gpt-5", match.PlannerModel)
 	assert.Equal(t, "gpt-5.4-mini", match.ExecutorModel)
+	assert.True(t, match.LegacyExecution)
+}
+
+func TestMatchRuleUsesOriginalModelForNewRules(t *testing.T) {
+	oldSettings := defaultSettings
+	defer func() {
+		defaultSettings = oldSettings
+	}()
+
+	defaultSettings.Enabled = true
+	defaultSettings.DisableForStream = false
+	defaultSettings.RulesJSON = `[{"enabled":true,"strategy":"planner","models":["gpt-5"],"analysis_model":"gpt-5.4-mini"}]`
+
+	match, ok := MatchRule("default", "gpt-5", false)
+	require.True(t, ok)
+	assert.Equal(t, "planner", match.Strategy)
+	assert.Equal(t, "gpt-5.4-mini", match.AnalysisModel)
+	assert.Equal(t, "gpt-5.4-mini", match.PlannerModel)
+	assert.Equal(t, "gpt-5", match.ExecutorModel)
+	assert.False(t, match.LegacyExecution)
 }

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
+import type { TFunction } from 'i18next'
 import { ChevronDown, ChevronUp, Copy, Info, Plus, Trash2 } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
 import { useFieldArray, useWatch, type UseFormReturn } from 'react-hook-form'
@@ -50,10 +51,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { getModels } from '@/features/models/api'
 import { getGroups } from '@/features/users/api'
 
 import { safeNumberFieldProps } from '../utils/numeric-field'
+import {
+  getMyCostSavingModels,
+  type MyCostSavingModelAvailability,
+} from './api'
 import {
   cloneMyCostSavingRule,
   createMyCostSavingRule,
@@ -70,8 +74,8 @@ type SelectOption = {
   label: string
 }
 
-const MAX_RULE_LOW_COST_TOKENS = 1073741823
 const MAX_RULE_CACHE_TTL_SECONDS = 2592000
+const REQUESTED_MODEL_OPTION = '__my_cost_saving_requested_model__'
 
 function uniqueSortedOptions(values: string[]): SelectOption[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
@@ -80,6 +84,27 @@ function uniqueSortedOptions(values: string[]): SelectOption[] {
       value,
       label: value,
     }))
+}
+
+function normalizeGroups(values: string[] | undefined): string[] {
+  return [
+    ...new Set((values ?? []).map((value) => value.trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b))
+}
+
+function buildModelOptions(
+  models: MyCostSavingModelAvailability[],
+  t: TFunction
+): SelectOption[] {
+  return models
+    .map((item) => ({
+      value: item.model,
+      label: t('Model channel count', {
+        model: item.model,
+        count: item.channel_count,
+      }),
+    }))
+    .sort((a, b) => a.value.localeCompare(b.value))
 }
 
 function RuleActionButton(props: {
@@ -114,6 +139,7 @@ function RuleSelectField(props: {
   value: string
   options: SelectOption[]
   onChange: (value: string | null) => void
+  description?: string
 }) {
   return (
     <FormItem>
@@ -137,9 +163,32 @@ function RuleSelectField(props: {
           </SelectGroup>
         </SelectContent>
       </Select>
+      {props.description && (
+        <FormDescription>{props.description}</FormDescription>
+      )}
       <FormMessage />
     </FormItem>
   )
+}
+
+function getStrategyDescription(
+  strategy: string | undefined,
+  t: TFunction
+): string {
+  switch (strategy) {
+    case 'planner':
+      return t(
+        'Runs the analysis model first, then the requested model produces the final answer.'
+      )
+    case 'auto':
+      return t(
+        'Auto is kept for legacy low-cost rules; new visual rules keep the requested model for final answers.'
+      )
+    default:
+      return t(
+        'Direct serves exact cache hits first; cache misses continue on the requested model.'
+      )
+  }
 }
 
 function MyCostSavingRuleCard(props: {
@@ -160,12 +209,27 @@ function MyCostSavingRuleCard(props: {
     name: 'my_cost_saving.rules',
   })
   const rule = rules?.[props.index]
+  const selectedGroups = useMemo(
+    () => normalizeGroups(rule?.groups),
+    [rule?.groups]
+  )
+
+  const analysisModelsQuery = useQuery({
+    queryKey: [
+      'system-settings',
+      'my-cost-saving',
+      'models',
+      selectedGroups.join(','),
+    ],
+    queryFn: () => getMyCostSavingModels(selectedGroups),
+    staleTime: 5 * 60 * 1000,
+  })
 
   const strategyOptions = useMemo(
     () => [
       { value: 'direct', label: t('Direct') },
       { value: 'auto', label: t('Auto') },
-      { value: 'planner', label: t('Planner') },
+      { value: 'planner', label: t('Analyze then answer') },
     ],
     [t]
   )
@@ -184,6 +248,39 @@ function MyCostSavingRuleCard(props: {
     ],
     [t]
   )
+  const analysisModelOptions = useMemo(() => {
+    const models = analysisModelsQuery.data?.data?.models ?? []
+    const fullySupportedModels = models.filter(
+      (model) => model.all_groups_supported
+    )
+    const options = buildModelOptions(fullySupportedModels, t)
+    const currentValue = rule?.planner_model?.trim()
+    const hasCurrent =
+      currentValue && options.some((option) => option.value === currentValue)
+    if (currentValue && !hasCurrent) {
+      options.unshift({
+        value: currentValue,
+        label: t('Model unavailable for all selected groups', {
+          model: currentValue,
+        }),
+      })
+    }
+    return [
+      {
+        value: REQUESTED_MODEL_OPTION,
+        label: t('No analysis model'),
+      },
+      ...options,
+    ]
+  }, [analysisModelsQuery.data?.data?.models, rule?.planner_model, t])
+  const partialModelCount = useMemo(() => {
+    if (selectedGroups.length < 2) {
+      return 0
+    }
+    return (analysisModelsQuery.data?.data?.models ?? []).filter(
+      (model) => !model.all_groups_supported
+    ).length
+  }, [analysisModelsQuery.data?.data?.models, selectedGroups.length])
 
   return (
     <Card className='border-border/70 shadow-none'>
@@ -217,7 +314,7 @@ function MyCostSavingRuleCard(props: {
               </div>
               <p className='text-muted-foreground text-xs leading-relaxed'>
                 {t(
-                  'Rules match groups and requested models, then choose direct, auto, or planner strategy.'
+                  'Rules match groups and requested models, then choose cache-only, legacy auto, or analyze-then-answer strategy.'
                 )}
               </p>
             </div>
@@ -319,29 +416,8 @@ function MyCostSavingRuleCard(props: {
               value={field.value}
               options={strategyOptions}
               onChange={field.onChange}
+              description={getStrategyDescription(field.value, t)}
             />
-          )}
-        />
-
-        <FormField
-          control={props.form.control}
-          name={`my_cost_saving.rules.${props.index}.executor_model`}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Execution Model')}</FormLabel>
-              <FormControl>
-                <ComboboxInput
-                  id={field.name}
-                  options={props.modelOptions}
-                  value={field.value ?? ''}
-                  onValueChange={field.onChange}
-                  placeholder={t('Search models...')}
-                  emptyText={t('No models found.')}
-                  allowCustomValue
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
           )}
         />
 
@@ -350,60 +426,30 @@ function MyCostSavingRuleCard(props: {
           name={`my_cost_saving.rules.${props.index}.planner_model`}
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('Planner Model')}</FormLabel>
+              <FormLabel>{t('Analysis Model')}</FormLabel>
               <FormControl>
                 <ComboboxInput
                   id={field.name}
-                  options={props.modelOptions}
-                  value={field.value ?? ''}
-                  onValueChange={field.onChange}
+                  options={analysisModelOptions}
+                  value={field.value || REQUESTED_MODEL_OPTION}
+                  onValueChange={(value) =>
+                    field.onChange(
+                      value === REQUESTED_MODEL_OPTION ? '' : value
+                    )
+                  }
                   placeholder={t('Search models...')}
                   emptyText={t('No models found.')}
-                  allowCustomValue
                 />
               </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={props.form.control}
-          name={`my_cost_saving.rules.${props.index}.complex_model`}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Complex Model')}</FormLabel>
-              <FormControl>
-                <ComboboxInput
-                  id={field.name}
-                  options={props.modelOptions}
-                  value={field.value ?? ''}
-                  onValueChange={field.onChange}
-                  placeholder={t('Search models...')}
-                  emptyText={t('No models found.')}
-                  allowCustomValue
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={props.form.control}
-          name={`my_cost_saving.rules.${props.index}.max_low_cost_tokens`}
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Low-cost prompt threshold')}</FormLabel>
-              <FormControl>
-                <Input
-                  type='number'
-                  min={0}
-                  max={MAX_RULE_LOW_COST_TOKENS}
-                  step={1}
-                  {...safeNumberFieldProps(field)}
-                />
-              </FormControl>
+              <FormDescription>
+                {partialModelCount > 0
+                  ? t(
+                      'Only models supported by every selected group are shown. Split rules by group to use partially supported models.'
+                    )
+                  : t(
+                      'Analysis strategy uses this model only for internal analysis; the final response uses the requested model.'
+                    )}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -476,8 +522,8 @@ export function MyCostSavingRulesEditor(props: MyCostSavingRulesEditorProps) {
   })
 
   const modelsQuery = useQuery({
-    queryKey: ['system-settings', 'my-cost-saving', 'models'],
-    queryFn: () => getModels({ page_size: 1000 }),
+    queryKey: ['system-settings', 'my-cost-saving', 'models', 'all'],
+    queryFn: () => getMyCostSavingModels([]),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -486,11 +532,11 @@ export function MyCostSavingRulesEditor(props: MyCostSavingRulesEditorProps) {
     [groupsQuery.data?.data]
   )
   const modelOptions = useMemo(() => {
-    const names = (modelsQuery.data?.data?.items ?? [])
-      .map((model) => model.model_name)
-      .filter((name): name is string => typeof name === 'string' && name.trim() !== '')
+    const names = (modelsQuery.data?.data?.models ?? []).map(
+      (model) => model.model
+    )
     return uniqueSortedOptions(names)
-  }, [modelsQuery.data?.data?.items])
+  }, [modelsQuery.data?.data?.models])
 
   const addRule = () => {
     append(createMyCostSavingRule())
@@ -508,7 +554,7 @@ export function MyCostSavingRulesEditor(props: MyCostSavingRulesEditorProps) {
         <div className='min-w-0 space-y-1'>
           <p className='font-medium'>
             {t(
-              'Rules match groups and requested models, then choose direct, auto, or planner strategy.'
+              'Rules match groups and requested models, then choose cache-only, legacy auto, or analyze-then-answer strategy.'
             )}
           </p>
           <p className='text-muted-foreground text-xs leading-relaxed'>
@@ -534,7 +580,7 @@ export function MyCostSavingRulesEditor(props: MyCostSavingRulesEditorProps) {
               <p className='text-sm font-medium'>{t('Rules')}</p>
               <p className='text-muted-foreground text-xs'>
                 {t(
-                  'Rules match groups and requested models, then choose direct, auto, or planner strategy.'
+                  'Rules match groups and requested models, then choose cache-only, legacy auto, or analyze-then-answer strategy.'
                 )}
               </p>
             </div>

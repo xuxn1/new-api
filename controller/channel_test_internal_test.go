@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -219,6 +220,72 @@ func TestDeleteChannelBatchReportsAndAuditsActualDeletedCount(t *testing.T) {
 	}
 	require.NoError(t, common.UnmarshalJsonStr(auditLog.Other, &auditData))
 	assert.Equal(t, float64(1), auditData.Operation.Params["count"])
+}
+
+func TestGetAllChannelsIncludesDailyUsageStats(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+
+	channel := &model.Channel{
+		Name:  "usage-stats-channel",
+		Key:   "test-key",
+		Group: "default",
+	}
+	require.NoError(t, db.Create(channel).Error)
+
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	yesterday := todayStart - 3600
+	olderCall := now.Add(-45 * time.Minute).Unix()
+	lastCall := now.Add(-15 * time.Minute).Unix()
+
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			UserId:    1001,
+			Username:  "alice",
+			CreatedAt: yesterday,
+			Type:      model.LogTypeConsume,
+			ChannelId: channel.Id,
+			Quota:     80,
+		},
+		{
+			UserId:    1001,
+			Username:  "alice",
+			CreatedAt: olderCall,
+			Type:      model.LogTypeConsume,
+			ChannelId: channel.Id,
+			Quota:     120,
+		},
+		{
+			UserId:    1001,
+			Username:  "alice",
+			CreatedAt: lastCall,
+			Type:      model.LogTypeError,
+			ChannelId: channel.Id,
+		},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/channel?p=1&page_size=10", nil)
+
+	GetAllChannels(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Items []struct {
+				TodayUsedQuota int64 `json:"today_used_quota"`
+				LastCallTime   int64 `json:"last_call_time"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	require.Len(t, payload.Data.Items, 1)
+	assert.Equal(t, int64(120), payload.Data.Items[0].TodayUsedQuota)
+	assert.Equal(t, lastCall, payload.Data.Items[0].LastCallTime)
 }
 
 func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {

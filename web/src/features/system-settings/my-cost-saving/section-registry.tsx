@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* eslint-disable react-refresh/only-export-components */
 import { createSectionRegistry } from '../utils/section-registry'
 import { MyCostSavingSection } from './my-cost-saving-section'
 import type { MyCostSavingSettings } from './types'

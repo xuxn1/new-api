@@ -77,20 +77,6 @@ const createMyCostSavingSchema = (
     models: z.array(z.string()),
     strategy: z.enum(['direct', 'auto', 'planner']),
     planner_model: z.string(),
-    executor_model: z.string(),
-    complex_model: z.string(),
-    max_low_cost_tokens: z
-      .number()
-      .int(t('Enter a positive integer'))
-      .min(0, t('Low-cost prompt threshold must be between 0 and {{max}}', {
-        max: MAX_LOW_COST_PROMPT_TOKENS,
-      }))
-      .max(
-        MAX_LOW_COST_PROMPT_TOKENS,
-        t('Low-cost prompt threshold must be between 0 and {{max}}', {
-          max: MAX_LOW_COST_PROMPT_TOKENS,
-        })
-      ),
     cache_mode: z.enum(['global', 'enabled', 'disabled']),
     cache_ttl_seconds: z
       .number()
@@ -117,12 +103,12 @@ const createMyCostSavingSchema = (
       max_planner_tokens: z
         .number()
         .int(t('Enter a positive integer'))
-        .min(0, t('Planner token limit must be between 0 and {{max}}', {
+        .min(0, t('Analysis token limit must be between 0 and {{max}}', {
           max: MAX_PLANNER_TOKENS,
         }))
         .max(
           MAX_PLANNER_TOKENS,
-          t('Planner token limit must be between 0 and {{max}}', {
+          t('Analysis token limit must be between 0 and {{max}}', {
             max: MAX_PLANNER_TOKENS,
           })
         ),
@@ -255,7 +241,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                   <FormLabel>{t('Enable my-cost saving')}</FormLabel>
                   <FormDescription>
                     {t(
-                      'Matching group and model rules can use exact cache, low-cost routing, or optional planner execution.'
+                      'Matching group and model rules can use exact cache or optional internal analysis while final answers stay on the requested model.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>
@@ -295,7 +281,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
               icon={<ShieldCheck className='size-4' aria-hidden='true' />}
               title={t('Quality guardrail')}
               description={t(
-                'Auto rules can keep large prompts on the original or a stronger configured model.'
+                'Unsupported analysis paths fall back to the normal requested model flow.'
               )}
             />
           </div>
@@ -306,7 +292,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                 <h3 className='text-sm font-medium'>{t('Group and model rules')}</h3>
                 <p className='text-muted-foreground text-sm leading-relaxed'>
                   {t(
-                    'Rules match groups and requested models, then choose direct, auto, or planner strategy.'
+                    'Rules match groups and requested models, then choose cache-only, legacy auto, or analyze-then-answer strategy.'
                   )}
                 </p>
               </div>
@@ -316,35 +302,10 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
             <div className='min-w-0 space-y-4'>
               <FormField
                 control={form.control}
-                name='my_cost_saving.max_low_cost_prompt_tokens'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Low-cost prompt threshold')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        max={MAX_LOW_COST_PROMPT_TOKENS}
-                        step={1}
-                        {...safeNumberFieldProps(field)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Auto rules use the low-cost model up to this estimated prompt size.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name='my_cost_saving.max_planner_tokens'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Planner max tokens')}</FormLabel>
+                    <FormLabel>{t('Analysis max tokens')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
@@ -356,7 +317,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Use 0 to avoid applying a planner token limit to the upstream request.'
+                        'Use 0 to avoid applying an analysis token limit to the upstream request.'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -369,7 +330,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                 name='my_cost_saving.planner_prompt'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Planner prompt')}</FormLabel>
+                    <FormLabel>{t('Analysis prompt')}</FormLabel>
                     <FormControl>
                       <Textarea
                         rows={5}
@@ -379,7 +340,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'This prompt is sent only to the internal planner model and is never shown to users.'
+                        'This prompt is sent only to the internal analysis model and is never shown to users.'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -440,10 +401,10 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                   render={({ field }) => (
                     <SettingsSwitchItem>
                       <SettingsSwitchContent>
-                        <FormLabel>{t('Inject planner analysis')}</FormLabel>
+                        <FormLabel>{t('Inject analysis')}</FormLabel>
                         <FormDescription>
                           {t(
-                            'Pass the internal analysis to the executor model as hidden system context.'
+                            'Pass the internal analysis to the requested model as hidden system context.'
                           )}
                         </FormDescription>
                       </SettingsSwitchContent>

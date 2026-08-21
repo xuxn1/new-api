@@ -72,6 +72,7 @@ func TestSelectMyCostSavingExecutionModel(t *testing.T) {
 		ExecutorModel:    "gpt-5.4-mini",
 		ComplexModel:     "gpt-5",
 		MaxLowCostTokens: 1000,
+		LegacyExecution:  true,
 	}
 
 	assert.Equal(t, "gpt-5.4-mini", selectMyCostSavingExecutionModel(match, "gpt-5", 999))
@@ -86,4 +87,9 @@ func TestSelectMyCostSavingExecutionModel(t *testing.T) {
 	match.Strategy = "planner"
 	match.ComplexModel = "gpt-5"
 	assert.Equal(t, "gpt-5", selectMyCostSavingExecutionModel(match, "gpt-5.4-mini", 1001))
+
+	match.LegacyExecution = false
+	match.ExecutorModel = "gpt-5.4-mini"
+	match.ComplexModel = "gpt-5"
+	assert.Equal(t, "gpt-5", selectMyCostSavingExecutionModel(match, "gpt-5", 999))
 }

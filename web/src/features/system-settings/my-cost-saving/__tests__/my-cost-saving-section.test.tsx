@@ -37,14 +37,27 @@ vi.mock('@/features/users/api', () => ({
   }),
 }))
 
-vi.mock('@/features/models/api', () => ({
-  getModels: async () => ({
+vi.mock('../api', () => ({
+  getMyCostSavingModels: async () => ({
     success: true,
     data: {
-      items: [{ model_name: 'gpt-5.4-mini' }, { model_name: 'gpt-5' }],
-      total: 2,
-      page: 1,
-      page_size: 1000,
+      selected_groups: [],
+      models: [
+        {
+          model: 'gpt-5',
+          supported_groups: ['beta', 'vip'],
+          supported_group_count: 2,
+          channel_count: 2,
+          all_groups_supported: true,
+        },
+        {
+          model: 'gpt-5.4-mini',
+          supported_groups: ['vip'],
+          supported_group_count: 1,
+          channel_count: 1,
+          all_groups_supported: true,
+        },
+      ],
     },
   }),
 }))
@@ -101,9 +114,9 @@ describe('my cost saving section', () => {
     expect(
       screen.getByRole('spinbutton', { name: 'Exact cache TTL' })
     ).toHaveValue(600)
-    expect(
-      screen.getByRole('spinbutton', { name: 'Low-cost prompt threshold' })
-    ).toHaveValue(2000)
+    expect(screen.queryByText('Rules JSON')).not.toBeInTheDocument()
+    expect(screen.queryByText('Execution Model')).not.toBeInTheDocument()
+    expect(screen.queryByText('Complex Model')).not.toBeInTheDocument()
 
     await user.click(screen.getAllByRole('button', { name: 'Add Rule' })[0])
 
@@ -117,5 +130,6 @@ describe('my cost saving section', () => {
     expect(screen.getByRole('button', { name: 'Move down' })).toBeDisabled()
     expect(screen.getByText('Groups')).toBeInTheDocument()
     expect(screen.getByText('Models')).toBeInTheDocument()
+    expect(screen.getByText('Analysis Model')).toBeInTheDocument()
   })
 })

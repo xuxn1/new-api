@@ -311,6 +311,12 @@ func SetApiRouter(router *gin.Engine) {
 			groupRoute.GET("/", controller.GetGroups)
 		}
 
+		myCostSavingRoute := apiRouter.Group("/my-cost-saving")
+		myCostSavingRoute.Use(middleware.AdminAuth())
+		{
+			myCostSavingRoute.GET("/models", controller.GetMyCostSavingModels)
+		}
+
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
 		prefillGroupRoute.Use(middleware.AdminAuth())
 		{

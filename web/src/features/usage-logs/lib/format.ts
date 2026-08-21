@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusBadgeProps } from '@/components/status-badge'
+import { formatLogQuota } from '@/lib/format'
 import {
   BILLING_PRICING_VARS,
   normalizeTierLabel,
@@ -25,7 +26,7 @@ import {
 } from '@/features/pricing/lib/billing-expr'
 
 import type { UsageLog } from '../data/schema'
-import type { LogOtherData } from '../types'
+import type { LogOtherData, MyCostSavingAdminInfo } from '../types'
 
 export { normalizeTierLabel }
 
@@ -357,6 +358,53 @@ export function getTieredBillingSummary(
     }
   }
   return { tiers, tier, priceEntries }
+}
+
+export function getMyCostSavingSummaryText(
+  info: MyCostSavingAdminInfo | null | undefined,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string {
+  if (!info) return ''
+
+  const segments: string[] = []
+  if (
+    info.original_billed_quota != null ||
+    info.actual_estimated_quota != null ||
+    info.saving_quota != null
+  ) {
+    const billed = info.original_billed_quota ?? 0
+    const actual = info.actual_estimated_quota ?? billed
+    const profitQuota = Math.max(billed - actual, 0)
+    const savedQuota = info.saving_quota ?? profitQuota
+    segments.push(
+      `${t('Profit')}: ${formatLogQuota(profitQuota)} · ${t('Saved Cost')}: ${formatLogQuota(savedQuota)}`
+    )
+  }
+
+  if (info.cache_hit) {
+    segments.push(t('Cache Hit'))
+  } else if (info.fallback_used) {
+    segments.push(
+      info.fallback_reason
+        ? `${t('Fallback to original model')} · ${info.fallback_reason}`
+        : t('Fallback to original model')
+    )
+  } else {
+    const pathSegments: string[] = []
+    if (info.planner_model) {
+      pathSegments.push(`${t('Analysis Model')}: ${info.planner_model}`)
+    }
+    if (info.executor_model) {
+      pathSegments.push(`${t('Execution Model')}: ${info.executor_model}`)
+    }
+    if (pathSegments.length > 0) {
+      segments.push(pathSegments.join(' → '))
+    } else if (info.strategy) {
+      segments.push(`${t('Strategy')}: ${info.strategy}`)
+    }
+  }
+
+  return segments.join(' · ')
 }
 
 /**

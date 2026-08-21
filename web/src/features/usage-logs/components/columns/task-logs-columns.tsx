@@ -114,9 +114,11 @@ function CostSavingQuotaCell(props: {
   )
 }
 
-function getProfitQuota(row: TaskLog): number {
-  const billed = row.cost_saving_context?.original_billed_quota ?? row.quota ?? 0
-  const internal = row.cost_saving_context?.actual_estimated_quota ?? 0
+function getProfitQuota(row: TaskLog): number | undefined {
+  if (!row.cost_saving_context) return undefined
+
+  const billed = row.cost_saving_context.original_billed_quota ?? row.quota ?? 0
+  const internal = row.cost_saving_context.actual_estimated_quota ?? billed
   return Math.max(billed - internal, 0)
 }
 
@@ -218,7 +220,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
               />
               {context?.planner_model_name ? (
                 <span className='text-muted-foreground/60 truncate text-[11px]'>
-                  {t('Planner')}: {context.planner_model_name}
+                  {t('Analysis')}: {context.planner_model_name}
                 </span>
               ) : null}
             </div>

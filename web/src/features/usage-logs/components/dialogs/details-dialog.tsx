@@ -18,24 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
 import type { ReactNode } from 'react'
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import {
   Copy,
   Check,
@@ -70,6 +52,7 @@ import {
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
+  getMyCostSavingSummaryText,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   isViolationFeeLog,
@@ -412,12 +395,17 @@ function MyCostSavingDetails(props: {
   const info = props.info
   if (!info) return null
 
+  const summaryText = getMyCostSavingSummaryText(info, t)
   const profitQuota = Math.max(
     (info.original_billed_quota ?? 0) - (info.actual_estimated_quota ?? 0),
     0
   )
   const cacheHitLabel = info.cache_hit ? t('Yes') : t('No')
   const rows = [
+    summaryText && {
+      label: t('Saving Summary'),
+      value: summaryText,
+    },
     info.rule_name && { label: t('Rule'), value: info.rule_name },
     info.strategy && { label: t('Strategy'), value: info.strategy },
     info.original_model && {
@@ -426,7 +414,7 @@ function MyCostSavingDetails(props: {
       mono: true,
     },
     info.planner_model && {
-      label: t('Planner Model'),
+      label: t('Analysis Model'),
       value: info.planner_model,
       mono: true,
     },

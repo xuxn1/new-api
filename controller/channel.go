@@ -71,6 +71,54 @@ func clearChannelInfo(channel *model.Channel) {
 	}
 }
 
+func attachChannelUsageStats(channels []*model.Channel) {
+	if len(channels) == 0 {
+		return
+	}
+
+	channelIDs := make([]int, 0, len(channels))
+	for _, channel := range channels {
+		if channel != nil && channel.Id != 0 {
+			channelIDs = append(channelIDs, channel.Id)
+		}
+	}
+	if len(channelIDs) == 0 {
+		return
+	}
+
+	now := time.Now()
+	todayStart := time.Date(
+		now.Year(),
+		now.Month(),
+		now.Day(),
+		0,
+		0,
+		0,
+		0,
+		now.Location(),
+	).Unix()
+
+	stats, err := model.GetChannelUsageStatsByIDs(channelIDs, todayStart)
+	if err != nil {
+		common.SysError("failed to load channel usage stats: " + err.Error())
+		return
+	}
+
+	for _, channel := range channels {
+		if channel == nil {
+			continue
+		}
+		stat, ok := stats[channel.Id]
+		if !ok {
+			channel.TodayUsedQuota = 0
+			channel.LastCallTime = 0
+			continue
+		}
+		channel.TodayUsedQuota = stat.TodayUsedQuota
+		channel.LastCallTime = stat.LastCallTime
+	}
+}
+
 func applyChannelStatusFilter(query *gorm.DB, statusFilter int) *gorm.DB {
 	if statusFilter == common.ChannelStatusEnabled {
 		return query.Where("status = ?", common.ChannelStatusEnabled)
@@ -168,6 +216,7 @@ func GetAllChannels(c *gin.Context) {
 	for _, datum := range channelData {
 		clearChannelInfo(datum)
 	}
+	attachChannelUsageStats(channelData)
 
 	countQuery := buildChannelListQuery(groupFilter, statusFilter, -1)
 	var results []struct {
@@ -381,6 +430,7 @@ func SearchChannels(c *gin.Context) {
 	for _, datum := range pagedData {
 		clearChannelInfo(datum)
 	}
+	attachChannelUsageStats(pagedData)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -407,6 +457,7 @@ func GetChannel(c *gin.Context) {
 	}
 	if channel != nil {
 		clearChannelInfo(channel)
+		attachChannelUsageStats([]*model.Channel{channel})
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

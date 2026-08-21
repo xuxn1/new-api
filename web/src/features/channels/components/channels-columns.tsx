@@ -52,7 +52,7 @@ import {
   formatQuotaWithCurrency,
   getCurrencyLabel,
 } from '@/lib/currency'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { truncateText } from '@/lib/utils'
 
 import { getCodexUsage, updateChannelBalance } from '../api'
@@ -577,6 +577,54 @@ export function BalanceCell({ channel }: { channel: Channel }) {
           }}
         />
       )}
+    </TooltipProvider>
+  )
+}
+
+function TodayUsedCell({ channel }: { channel: Channel }) {
+  return (
+    <StatusBadge
+      label={formatLogQuota(channel.today_used_quota || 0)}
+      variant='neutral'
+      size='sm'
+      copyable={false}
+      showDot={false}
+      className='-ml-1.5'
+    />
+  )
+}
+
+function LastCallTimeCell({
+  channel,
+  locale,
+}: {
+  channel: Channel
+  locale: Intl.LocalesArgument
+}) {
+  const lastCallTime = channel.last_call_time || 0
+  if (lastCallTime <= 0) {
+    return <span className='text-muted-foreground text-xs'>-</span>
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <StatusBadge
+              label={formatRelativeTime(lastCallTime, locale)}
+              variant='neutral'
+              size='sm'
+              copyable={false}
+              showDot={false}
+              className='-ml-1.5 cursor-help'
+            />
+          }
+        />
+        <TooltipContent side='top'>
+          <p className='font-mono text-sm'>{formatTimestampToDate(lastCallTime)}</p>
+        </TooltipContent>
+      </Tooltip>
     </TooltipProvider>
   )
 }
@@ -1135,6 +1183,24 @@ export function useChannelsColumns(
         header: t('Used / Remaining'),
         cell: ({ row }) => <BalanceCell channel={row.original} />,
         size: 180,
+      },
+
+      {
+        accessorKey: 'today_used_quota',
+        header: t('Today Used'),
+        cell: ({ row }) => <TodayUsedCell channel={row.original} />,
+        size: 120,
+        meta: { mobileHidden: true },
+      },
+
+      {
+        accessorKey: 'last_call_time',
+        header: t('Last Call Time'),
+        cell: ({ row }) => (
+          <LastCallTimeCell channel={row.original} locale={locale} />
+        ),
+        size: 140,
+        meta: { mobileHidden: true },
       },
 
       // Response Time column

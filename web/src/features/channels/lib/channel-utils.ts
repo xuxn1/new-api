@@ -651,6 +651,8 @@ export function aggregateChannelsByTag(
         status: undefined as unknown as number,
         group: '',
         used_quota: 0,
+        today_used_quota: 0,
+        last_call_time: 0,
         response_time: 0,
         priority: -1 as unknown as number | null,
         weight: -1 as unknown as number | null,
@@ -676,6 +678,15 @@ export function aggregateChannelsByTag(
 
     // Aggregate used_quota (sum)
     tagRow.used_quota += channel.used_quota
+
+    // Aggregate today's used quota (sum)
+    tagRow.today_used_quota += channel.today_used_quota || 0
+
+    // Aggregate last call time (latest timestamp)
+    tagRow.last_call_time = Math.max(
+      tagRow.last_call_time || 0,
+      channel.last_call_time || 0
+    )
 
     // Aggregate response_time (average)
     tagRow.response_time =

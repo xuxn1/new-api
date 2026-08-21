@@ -16,18 +16,22 @@ const (
 )
 
 type Rule struct {
-	Enabled          bool     `json:"enabled"`
-	Name             string   `json:"name"`
-	Groups           []string `json:"groups"`
-	Models           []string `json:"models"`
-	Strategy         string   `json:"strategy,omitempty"`
-	PlannerModel     string   `json:"planner_model,omitempty"`
-	ExecutorModel    string   `json:"executor_model"`
-	ComplexModel     string   `json:"complex_model,omitempty"`
-	MaxLowCostTokens int      `json:"max_low_cost_tokens,omitempty"`
-	CacheEnabled     *bool    `json:"cache_enabled,omitempty"`
-	CacheTTLSeconds  int      `json:"cache_ttl_seconds,omitempty"`
-	CacheScope       string   `json:"cache_scope,omitempty"`
+	Enabled       bool     `json:"enabled"`
+	Name          string   `json:"name"`
+	Groups        []string `json:"groups"`
+	Models        []string `json:"models"`
+	Strategy      string   `json:"strategy,omitempty"`
+	AnalysisModel string   `json:"analysis_model,omitempty"`
+	// PlannerModel is kept for backwards compatibility with the original rule schema.
+	PlannerModel string `json:"planner_model,omitempty"`
+	// ExecutorModel and ComplexModel are legacy final-model overrides. New rules
+	// always execute on the model requested by the customer.
+	ExecutorModel    string `json:"executor_model,omitempty"`
+	ComplexModel     string `json:"complex_model,omitempty"`
+	MaxLowCostTokens int    `json:"max_low_cost_tokens,omitempty"`
+	CacheEnabled     *bool  `json:"cache_enabled,omitempty"`
+	CacheTTLSeconds  int    `json:"cache_ttl_seconds,omitempty"`
+	CacheScope       string `json:"cache_scope,omitempty"`
 }
 
 type Settings struct {
@@ -47,9 +51,11 @@ type Settings struct {
 type Match struct {
 	Rule             Rule
 	Strategy         string
+	AnalysisModel    string
 	PlannerModel     string
 	ExecutorModel    string
 	ComplexModel     string
+	LegacyExecution  bool
 	MaxLowCostTokens int
 	CacheEnabled     bool
 	CacheTTLSeconds  int
@@ -131,16 +137,17 @@ func MatchRule(group string, modelName string, isStream bool) (Match, bool) {
 			continue
 		}
 		strategy := normalizeStrategy(rule.Strategy)
-		plannerModel := strings.TrimSpace(rule.PlannerModel)
-		executorModel := strings.TrimSpace(rule.ExecutorModel)
-		if executorModel == "" {
-			continue
+		analysisModel := strings.TrimSpace(rule.AnalysisModel)
+		if analysisModel == "" {
+			analysisModel = strings.TrimSpace(rule.PlannerModel)
 		}
-		if plannerModel == "" {
+		legacyExecutorModel := strings.TrimSpace(rule.ExecutorModel)
+		legacyExecution := legacyExecutorModel != ""
+		if legacyExecution && analysisModel == "" {
 			if strategy == "planner" {
-				plannerModel = modelName
+				analysisModel = modelName
 			} else {
-				plannerModel = executorModel
+				analysisModel = legacyExecutorModel
 			}
 		}
 		if !matchesAny(group, rule.Groups) {
@@ -161,12 +168,18 @@ func MatchRule(group string, modelName string, isStream bool) (Match, bool) {
 		if rule.MaxLowCostTokens > 0 {
 			maxLowCostTokens = rule.MaxLowCostTokens
 		}
+		executorModel := modelName
+		if legacyExecution {
+			executorModel = legacyExecutorModel
+		}
 		return Match{
 			Rule:             rule,
 			Strategy:         strategy,
-			PlannerModel:     plannerModel,
+			AnalysisModel:    analysisModel,
+			PlannerModel:     analysisModel,
 			ExecutorModel:    executorModel,
 			ComplexModel:     strings.TrimSpace(rule.ComplexModel),
+			LegacyExecution:  legacyExecution,
 			MaxLowCostTokens: maxLowCostTokens,
 			CacheEnabled:     cacheEnabled,
 			CacheTTLSeconds:  cacheTTLSeconds,

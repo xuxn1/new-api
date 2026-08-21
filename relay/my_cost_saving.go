@@ -62,6 +62,9 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 	}
 
 	settings := mycostsaving.GetSettings()
+	shouldRunAnalysis := match.Strategy == "planner" &&
+		match.AnalysisModel != "" &&
+		settings.InjectAnalysisToRequest
 	costInfo := &relaycommon.CostSavingInfo{
 		Enabled:              true,
 		RuleName:             match.Rule.Name,
@@ -76,8 +79,8 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 
 	executionModel := selectMyCostSavingExecutionModel(match, info.OriginModelName, originalPromptTokens)
 	costInfo.ExecutorModelName = executionModel
-	if match.Strategy == "planner" {
-		costInfo.PlannerModelName = match.PlannerModel
+	if shouldRunAnalysis {
+		costInfo.PlannerModelName = match.AnalysisModel
 	}
 	cacheKey := ""
 	if ttl := myCostSavingCacheTTL(match); ttl > 0 && !info.IsStream {
@@ -93,17 +96,15 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 			}
 		}
 	}
-	if executionModel == info.OriginModelName && match.Strategy != "planner" {
-		info.CostSaving = nil
-		return false, nil
-	}
 
+	// Direct rules still use this internal path so exact cache can warm up on
+	// misses and serve later identical requests without another upstream call.
 	analysis := ""
-	if match.Strategy == "planner" && settings.InjectAnalysisToRequest {
+	if shouldRunAnalysis {
 		var plannerUsage *dto.Usage
 		var plannerRunInfo *relaycommon.RelayInfo
 		var err error
-		analysis, plannerUsage, plannerRunInfo, err = runMyCostSavingPlanner(c, info, request, match.PlannerModel, settings.MaxPlannerTokens, settings.PlannerPrompt)
+		analysis, plannerUsage, plannerRunInfo, err = runMyCostSavingPlanner(c, info, request, match.AnalysisModel, settings.MaxPlannerTokens, settings.PlannerPrompt)
 		if err != nil {
 			return handleMyCostSavingFallback(c, info, fmt.Sprintf("planner failed: %s", err.Error()), nil)
 		}
@@ -111,7 +112,7 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 		if plannerUsage != nil {
 			costInfo.PlannerPromptTokens = plannerUsage.PromptTokens
 			costInfo.PlannerCompletionTokens = plannerUsage.CompletionTokens
-			costInfo.PlannerEstimatedQuota = estimateMyCostSavingQuota(match.PlannerModel, plannerUsage.PromptTokens, plannerUsage.CompletionTokens, info.PriceData.GroupRatioInfo.GroupRatio)
+			costInfo.PlannerEstimatedQuota = estimateMyCostSavingQuota(match.AnalysisModel, plannerUsage.PromptTokens, plannerUsage.CompletionTokens, info.PriceData.GroupRatioInfo.GroupRatio)
 		}
 	}
 
@@ -160,6 +161,9 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func selectMyCostSavingExecutionModel(match mycostsaving.Match, originalModel string, originalPromptTokens int) string {
+	if !match.LegacyExecution {
+		return originalModel
+	}
 	if (match.Strategy == "auto" || match.Strategy == "planner") &&
 		match.MaxLowCostTokens > 0 &&
 		originalPromptTokens > match.MaxLowCostTokens {

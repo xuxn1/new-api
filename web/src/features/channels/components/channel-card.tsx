@@ -61,6 +61,8 @@ function ChannelCardComponent({
 
   const fieldLabels: Record<string, string> = {
     balance: t('Used / Remaining'),
+    today_used_quota: t('Today Used'),
+    last_call_time: t('Last Call Time'),
     response_time: t('Response'),
     test_time: t('Last Tested'),
   }
@@ -75,6 +77,8 @@ function ChannelCardComponent({
   const priorityCell = renderCell('priority')
   const weightCell = renderCell('weight')
   const balanceCell = renderCell('balance')
+  const todayUsedCell = renderCell('today_used_quota')
+  const lastCallTimeCell = renderCell('last_call_time')
   const responseCell = renderCell('response_time')
   const testCell = renderCell('test_time')
 
@@ -134,13 +138,27 @@ function ChannelCardComponent({
           </div>
 
           {/* Right column (sits on the right, content left-aligned). A single
-            grid with content-sized columns keeps Priority/Weight and
-            Response/Last Tested aligned without wasting horizontal space. */}
+            grid with content-sized columns keeps the key metrics aligned
+            without wasting horizontal space. */}
           <div className='grid shrink-0 grid-cols-[auto_auto] items-center gap-x-3 gap-y-1'>
             <span className={labelClass}>{t('Priority')}</span>
             <span className={labelClass}>{t('Weight')}</span>
             <div className='flex justify-start'>{priorityCell}</div>
             <div className='flex justify-start'>{weightCell}</div>
+            <span className={cn('mt-2', labelClass)}>
+              {fieldLabels.today_used_quota}
+            </span>
+            <span className={cn('mt-2', labelClass)}>
+              {fieldLabels.last_call_time}
+            </span>
+            <div className='flex justify-start'>
+              {todayUsedCell ?? <span className='text-muted-foreground'>-</span>}
+            </div>
+            <div className='flex justify-start'>
+              {lastCallTimeCell ?? (
+                <span className='text-muted-foreground'>-</span>
+              )}
+            </div>
             <span className={cn('mt-2', labelClass)}>
               {fieldLabels.response_time}
             </span>
