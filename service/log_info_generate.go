@@ -151,6 +151,7 @@ func appendCostSavingInfo(relayInfo *relaycommon.RelayInfo, other map[string]int
 	costSaving := map[string]interface{}{
 		"enabled":                    info.Enabled,
 		"rule_name":                  info.RuleName,
+		"strategy":                   info.Strategy,
 		"original_model":             info.OriginalModelName,
 		"planner_model":              info.PlannerModelName,
 		"executor_model":             info.ExecutorModelName,
@@ -164,6 +165,8 @@ func appendCostSavingInfo(relayInfo *relaycommon.RelayInfo, other map[string]int
 		"executor_channel_name":      info.ExecutorChannelName,
 		"executor_channel_type":      info.ExecutorChannelType,
 		"analysis_injected":          info.AnalysisInjected,
+		"cache_hit":                  info.CacheHit,
+		"cache_scope":                info.CacheScope,
 		"fallback_used":              info.FallbackUsed,
 		"original_prompt_tokens":     info.OriginalPromptTokens,
 		"planner_prompt_tokens":      info.PlannerPromptTokens,
@@ -181,6 +184,9 @@ func appendCostSavingInfo(relayInfo *relaycommon.RelayInfo, other map[string]int
 	}
 	if info.FallbackReason != "" {
 		costSaving["fallback_reason"] = info.FallbackReason
+	}
+	if info.CacheKey != "" {
+		costSaving["cache_key"] = info.CacheKey
 	}
 	adminInfo["my_cost_saving"] = costSaving
 }

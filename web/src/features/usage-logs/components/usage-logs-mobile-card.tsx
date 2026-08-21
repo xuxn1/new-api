@@ -379,6 +379,10 @@ function TaskLogsCard<TData>({
   const taskIdCell = cells.get('task_id')
   const statusCell = cells.get('status')
   const submitTimeCell = cells.get('submit_time')
+  const billedCostCell = cells.get('billed_cost')
+  const internalCostCell = cells.get('internal_cost')
+  const profitCostCell = cells.get('profit_cost')
+  const savedCostCell = cells.get('saved_cost')
 
   return (
     <div className='space-y-2.5'>
@@ -396,8 +400,19 @@ function TaskLogsCard<TData>({
           primaryOnly
         />
         <SummaryField
+          label={t('Billed Cost')}
+          cell={billedCostCell}
+          primaryOnly
+        />
+        <SummaryField
+          label={t('Internal Cost')}
+          cell={internalCostCell}
+          primaryOnly
+        />
+        <SummaryField label={t('Profit')} cell={profitCostCell} primaryOnly />
+        <SummaryField
           label={t('Saved Cost')}
-          cell={cells.get('saved_cost')}
+          cell={savedCostCell}
           primaryOnly
         />
         <SummaryField

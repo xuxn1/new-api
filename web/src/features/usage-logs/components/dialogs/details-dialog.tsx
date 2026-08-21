@@ -412,8 +412,14 @@ function MyCostSavingDetails(props: {
   const info = props.info
   if (!info) return null
 
+  const profitQuota = Math.max(
+    (info.original_billed_quota ?? 0) - (info.actual_estimated_quota ?? 0),
+    0
+  )
+  const cacheHitLabel = info.cache_hit ? t('Yes') : t('No')
   const rows = [
     info.rule_name && { label: t('Rule'), value: info.rule_name },
+    info.strategy && { label: t('Strategy'), value: info.strategy },
     info.original_model && {
       label: t('Request Model'),
       value: info.original_model,
@@ -434,6 +440,20 @@ function MyCostSavingDetails(props: {
       value: info.executor_upstream_model,
       mono: true,
     },
+    info.cache_scope && {
+      label: t('Cache Scope'),
+      value: info.cache_scope,
+      mono: true,
+    },
+    info.cache_key && {
+      label: t('Cache Key'),
+      value: info.cache_key,
+      mono: true,
+    },
+    info.cache_hit != null && {
+      label: t('Cache Hit'),
+      value: cacheHitLabel,
+    },
     info.executor_channel_name && {
       label: t('Channel'),
       value: `${info.executor_channel_name}${
@@ -443,6 +463,11 @@ function MyCostSavingDetails(props: {
     info.actual_estimated_quota != null && {
       label: t('Internal Cost'),
       value: formatLogQuota(info.actual_estimated_quota),
+      mono: true,
+    },
+    info.original_billed_quota != null && {
+      label: t('Profit'),
+      value: formatLogQuota(profitQuota),
       mono: true,
     },
     info.original_billed_quota != null && {

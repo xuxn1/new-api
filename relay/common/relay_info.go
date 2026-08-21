@@ -191,6 +191,7 @@ type RelayInfo struct {
 type CostSavingInfo struct {
 	Enabled                   bool
 	RuleName                  string
+	Strategy                  string
 	OriginalModelName         string
 	PlannerModelName          string
 	ExecutorModelName         string
@@ -204,6 +205,9 @@ type CostSavingInfo struct {
 	ExecutorChannelName       string
 	ExecutorChannelType       int
 	AnalysisInjected          bool
+	CacheHit                  bool
+	CacheKey                  string
+	CacheScope                string
 	FallbackUsed              bool
 	FallbackReason            string
 	HideResponseModel         bool

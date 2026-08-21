@@ -127,6 +127,7 @@ type TaskBillingContext struct {
 type TaskCostSavingContext struct {
 	Enabled                   bool   `json:"enabled,omitempty"`
 	RuleName                  string `json:"rule_name,omitempty"`
+	Strategy                  string `json:"strategy,omitempty"`
 	OriginalModelName         string `json:"original_model_name,omitempty"`
 	PlannerModelName          string `json:"planner_model_name,omitempty"`
 	ExecutorModelName         string `json:"executor_model_name,omitempty"`
@@ -140,6 +141,8 @@ type TaskCostSavingContext struct {
 	ExecutorChannelName       string `json:"executor_channel_name,omitempty"`
 	ExecutorChannelType       int    `json:"executor_channel_type,omitempty"`
 	AnalysisInjected          bool   `json:"analysis_injected,omitempty"`
+	CacheHit                  bool   `json:"cache_hit,omitempty"`
+	CacheScope                string `json:"cache_scope,omitempty"`
 	FallbackUsed              bool   `json:"fallback_used,omitempty"`
 	FallbackReason            string `json:"fallback_reason,omitempty"`
 	HideResponseModel         bool   `json:"hide_response_model,omitempty"`

@@ -65,17 +65,41 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 	costInfo := &relaycommon.CostSavingInfo{
 		Enabled:              true,
 		RuleName:             match.Rule.Name,
+		Strategy:             match.Strategy,
 		OriginalModelName:    info.OriginModelName,
-		PlannerModelName:     match.PlannerModel,
-		ExecutorModelName:    match.ExecutorModel,
 		HideResponseModel:    true,
 		OriginalPromptTokens: originalPromptTokens,
 		OriginalBilledQuota:  info.FinalPreConsumedQuota,
+		CacheScope:           match.CacheScope,
 	}
 	info.CostSaving = costInfo
 
+	executionModel := selectMyCostSavingExecutionModel(match, info.OriginModelName, originalPromptTokens)
+	costInfo.ExecutorModelName = executionModel
+	if match.Strategy == "planner" {
+		costInfo.PlannerModelName = match.PlannerModel
+	}
+	cacheKey := ""
+	if ttl := myCostSavingCacheTTL(match); ttl > 0 && !info.IsStream {
+		var keyErr error
+		cacheKey, keyErr = myCostSavingCacheKey(info, request, match, executionModel)
+		if keyErr != nil {
+			logger.LogWarn(c, "my_cost_saving cache key failed: "+keyErr.Error())
+		} else if cacheKey != "" {
+			if entry, found, err := myCostSavingExactCache.Get(cacheKey); err == nil && found {
+				return writeMyCostSavingCachedResponse(c, info, costInfo, cacheKey, entry)
+			} else if err != nil {
+				logger.LogWarn(c, "my_cost_saving cache read failed: "+err.Error())
+			}
+		}
+	}
+	if executionModel == info.OriginModelName && match.Strategy != "planner" {
+		info.CostSaving = nil
+		return false, nil
+	}
+
 	analysis := ""
-	if settings.InjectAnalysisToRequest {
+	if match.Strategy == "planner" && settings.InjectAnalysisToRequest {
 		var plannerUsage *dto.Usage
 		var plannerRunInfo *relaycommon.RelayInfo
 		var err error
@@ -101,9 +125,9 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 	}
 
 	originalEstimateTokens := info.GetEstimatePromptTokens()
-	executionRequest.SetModelName(match.ExecutorModel)
+	executionRequest.SetModelName(executionModel)
 	info.SetEstimatePromptTokens(originalEstimateTokens + costInfo.PlannerCompletionTokens)
-	usage, executionRunInfo, newAPIError := runMyCostSavingExecution(c, info, executionRequest, match.ExecutorModel)
+	usage, response, executionRunInfo, newAPIError := runMyCostSavingExecution(c, info, executionRequest, executionModel)
 	info.SetEstimatePromptTokens(originalEstimateTokens)
 	if newAPIError != nil {
 		return handleMyCostSavingFallback(c, info, newAPIError.Error(), newAPIError)
@@ -119,13 +143,54 @@ func maybeApplyMyCostSaving(c *gin.Context, info *relaycommon.RelayInfo, request
 	costInfo.RawPromptTokens = costInfo.PlannerPromptTokens + costInfo.ExecutorPromptTokens
 	costInfo.RawCompletionTokens = costInfo.PlannerCompletionTokens + costInfo.ExecutorCompletionTokens
 	costInfo.RawTotalTokens = costInfo.RawPromptTokens + costInfo.RawCompletionTokens
-	costInfo.ExecutorEstimatedQuota = estimateMyCostSavingQuota(match.ExecutorModel, usage.PromptTokens, usage.CompletionTokens, info.PriceData.GroupRatioInfo.GroupRatio)
+	costInfo.ExecutorEstimatedQuota = estimateMyCostSavingQuota(executionModel, usage.PromptTokens, usage.CompletionTokens, info.PriceData.GroupRatioInfo.GroupRatio)
 	costInfo.ActualEstimatedQuota = costInfo.PlannerEstimatedQuota + costInfo.ExecutorEstimatedQuota
 
+	if cacheKey != "" && response != nil {
+		entry := myCostSavingCacheEntry{Response: *response}
+		if err := myCostSavingExactCache.SetWithTTL(cacheKey, entry, myCostSavingCacheTTL(match)); err != nil {
+			logger.LogWarn(c, "my_cost_saving cache write failed: "+err.Error())
+		}
+	}
 	if adjustedUsage := adjustMyCostSavingUsageForBilling(info, usage); adjustedUsage != nil {
 		usage = adjustedUsage
 	}
 	service.PostTextConsumeQuota(c, info, usage, []string{"my_cost_saving"})
+	return true, nil
+}
+
+func selectMyCostSavingExecutionModel(match mycostsaving.Match, originalModel string, originalPromptTokens int) string {
+	if (match.Strategy == "auto" || match.Strategy == "planner") &&
+		match.MaxLowCostTokens > 0 &&
+		originalPromptTokens > match.MaxLowCostTokens {
+		if match.ComplexModel != "" {
+			return match.ComplexModel
+		}
+		return originalModel
+	}
+	return match.ExecutorModel
+}
+
+func writeMyCostSavingCachedResponse(c *gin.Context, info *relaycommon.RelayInfo, costInfo *relaycommon.CostSavingInfo, cacheKey string, entry myCostSavingCacheEntry) (bool, *types.NewAPIError) {
+	response := entry.Response
+	response.Model = costInfo.OriginalModelName
+	response.Usage = *relaycommon.CostSavingVisibleUsage(info, &response.Usage)
+	out, err := common.Marshal(response)
+	if err != nil {
+		return false, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	costInfo.CacheHit = true
+	costInfo.CacheKey = cacheKey
+	costInfo.ActualEstimatedQuota = 0
+	costInfo.ExecutorPromptTokens = 0
+	costInfo.ExecutorCompletionTokens = 0
+	costInfo.RawPromptTokens = 0
+	costInfo.RawCompletionTokens = 0
+	costInfo.RawTotalTokens = 0
+	c.Writer.Header().Set("Content-Type", "application/json")
+	service.IOCopyBytesGracefully(c, nil, out)
+	usage := response.Usage
+	service.PostTextConsumeQuota(c, info, &usage, []string{"my_cost_saving", "exact_cache_hit"})
 	return true, nil
 }
 
@@ -193,55 +258,56 @@ func runMyCostSavingPlanner(c *gin.Context, info *relaycommon.RelayInfo, request
 	}
 	plannerRequest.Messages = append([]dto.Message{{Role: "system", Content: prompt}}, plannerRequest.Messages...)
 
-	analysis, usage, runInfo, newAPIError := runMyCostSavingNonStream(c, info, plannerRequest, plannerModel, true)
+	analysis, usage, _, runInfo, newAPIError := runMyCostSavingNonStream(c, info, plannerRequest, plannerModel, true)
 	if newAPIError != nil {
 		return "", usage, runInfo, newAPIError
 	}
 	return strings.TrimSpace(analysis), usage, runInfo, nil
 }
 
-func runMyCostSavingExecution(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest, executorModel string) (*dto.Usage, *relaycommon.RelayInfo, *types.NewAPIError) {
+func runMyCostSavingExecution(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest, executorModel string) (*dto.Usage, *dto.OpenAITextResponse, *relaycommon.RelayInfo, *types.NewAPIError) {
 	if info.IsStream {
-		return runMyCostSavingStream(c, info, request, executorModel)
+		usage, runInfo, err := runMyCostSavingStream(c, info, request, executorModel)
+		return usage, nil, runInfo, err
 	}
-	_, usage, runInfo, err := runMyCostSavingNonStream(c, info, request, executorModel, false)
-	return usage, runInfo, err
+	_, usage, response, runInfo, err := runMyCostSavingNonStream(c, info, request, executorModel, false)
+	return usage, response, runInfo, err
 }
 
-func runMyCostSavingNonStream(c *gin.Context, baseInfo *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest, modelName string, hidden bool) (string, *dto.Usage, *relaycommon.RelayInfo, *types.NewAPIError) {
+func runMyCostSavingNonStream(c *gin.Context, baseInfo *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest, modelName string, hidden bool) (string, *dto.Usage, *dto.OpenAITextResponse, *relaycommon.RelayInfo, *types.NewAPIError) {
 	runInfo, adaptor, newAPIError := prepareMyCostSavingAttempt(c, baseInfo, request, modelName, hidden)
 	if newAPIError != nil {
-		return "", nil, runInfo, newAPIError
+		return "", nil, nil, runInfo, newAPIError
 	}
 	storage, err := requestBodyStorageFromObject(request)
 	if err != nil {
-		return "", nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+		return "", nil, nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 	defer storage.Close()
 	body := common.NewReplayableBodyReader(storage)
 	resp, err := adaptor.DoRequest(c, runInfo, body)
 	if err != nil {
-		return "", nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+		return "", nil, nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 	httpResp, ok := resp.(*http.Response)
 	if !ok || httpResp == nil {
-		return "", nil, runInfo, types.NewOpenAIError(fmt.Errorf("invalid http response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+		return "", nil, nil, runInfo, types.NewOpenAIError(fmt.Errorf("invalid http response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
 	if httpResp.StatusCode != http.StatusOK {
-		return "", nil, runInfo, service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+		return "", nil, nil, runInfo, service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 	}
 	responseBody, readErr := io.ReadAll(httpResp.Body)
 	service.CloseResponseBodyGracefully(httpResp)
 	if readErr != nil {
-		return "", nil, runInfo, types.NewOpenAIError(readErr, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+		return "", nil, nil, runInfo, types.NewOpenAIError(readErr, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 
 	var response dto.OpenAITextResponse
 	if err := common.Unmarshal(responseBody, &response); err != nil {
-		return "", nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		return "", nil, nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	if oaiError := response.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return "", nil, runInfo, types.WithOpenAIError(*oaiError, httpResp.StatusCode)
+		return "", nil, nil, runInfo, types.WithOpenAIError(*oaiError, httpResp.StatusCode)
 	}
 	usage := response.Usage
 	if usage.PromptTokens == 0 {
@@ -259,7 +325,7 @@ func runMyCostSavingNonStream(c *gin.Context, baseInfo *relaycommon.RelayInfo, r
 	}
 
 	if hidden {
-		return textFromOpenAIResponse(response), &usage, runInfo, nil
+		return textFromOpenAIResponse(response), &usage, nil, runInfo, nil
 	}
 	if baseInfo.CostSaving != nil && baseInfo.CostSaving.HideResponseModel {
 		response.Model = baseInfo.CostSaving.OriginalModelName
@@ -267,10 +333,10 @@ func runMyCostSavingNonStream(c *gin.Context, baseInfo *relaycommon.RelayInfo, r
 	response.Usage = *relaycommon.CostSavingVisibleUsage(baseInfo, &usage)
 	out, err := common.Marshal(response)
 	if err != nil {
-		return "", nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		return "", nil, nil, runInfo, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	service.IOCopyBytesGracefully(c, httpResp, out)
-	return textFromOpenAIResponse(response), &usage, runInfo, nil
+	return textFromOpenAIResponse(response), &usage, &response, runInfo, nil
 }
 
 func runMyCostSavingStream(c *gin.Context, baseInfo *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest, modelName string) (*dto.Usage, *relaycommon.RelayInfo, *types.NewAPIError) {
@@ -486,6 +552,7 @@ func BuildTaskCostSavingContext(costInfo *relaycommon.CostSavingInfo) *model.Tas
 	return &model.TaskCostSavingContext{
 		Enabled:                   costInfo.Enabled,
 		RuleName:                  costInfo.RuleName,
+		Strategy:                  costInfo.Strategy,
 		OriginalModelName:         costInfo.OriginalModelName,
 		PlannerModelName:          costInfo.PlannerModelName,
 		ExecutorModelName:         costInfo.ExecutorModelName,
@@ -499,6 +566,8 @@ func BuildTaskCostSavingContext(costInfo *relaycommon.CostSavingInfo) *model.Tas
 		ExecutorChannelName:       costInfo.ExecutorChannelName,
 		ExecutorChannelType:       costInfo.ExecutorChannelType,
 		AnalysisInjected:          costInfo.AnalysisInjected,
+		CacheHit:                  costInfo.CacheHit,
+		CacheScope:                costInfo.CacheScope,
 		FallbackUsed:              costInfo.FallbackUsed,
 		FallbackReason:            costInfo.FallbackReason,
 		HideResponseModel:         costInfo.HideResponseModel,

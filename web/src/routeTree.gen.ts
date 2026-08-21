@@ -355,7 +355,7 @@ const AuthenticatedSystemSettingsModelsSectionRoute =
 const AuthenticatedSystemSettingsMyCostSavingIndexRoute =
   AuthenticatedSystemSettingsMyCostSavingIndexRouteImport.update({
     id: '/my-cost-saving/',
-    path: '/my-cost-saving',
+    path: '/my-cost-saving/',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
   } as any)
 const AuthenticatedSystemSettingsMyCostSavingSectionRoute =

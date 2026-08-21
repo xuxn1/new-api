@@ -219,6 +219,12 @@ func validateOptionValue(key string, value string) error {
 	if key == "my_cost_saving.max_planner_tokens" {
 		return mycostsaving.ValidateMaxPlannerTokens(value)
 	}
+	if key == "my_cost_saving.exact_cache_ttl_seconds" {
+		return mycostsaving.ValidateExactCacheTTLSeconds(value)
+	}
+	if key == "my_cost_saving.max_low_cost_prompt_tokens" {
+		return mycostsaving.ValidateMaxLowCostPromptTokens(value)
+	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}

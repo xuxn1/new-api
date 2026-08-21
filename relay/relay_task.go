@@ -585,6 +585,7 @@ func taskCostSavingContextToDto(context *model.TaskCostSavingContext) *dto.TaskC
 	return &dto.TaskCostSavingContext{
 		Enabled:                   context.Enabled,
 		RuleName:                  context.RuleName,
+		Strategy:                  context.Strategy,
 		OriginalModelName:         context.OriginalModelName,
 		PlannerModelName:          context.PlannerModelName,
 		ExecutorModelName:         context.ExecutorModelName,
@@ -598,6 +599,8 @@ func taskCostSavingContextToDto(context *model.TaskCostSavingContext) *dto.TaskC
 		ExecutorChannelName:       context.ExecutorChannelName,
 		ExecutorChannelType:       context.ExecutorChannelType,
 		AnalysisInjected:          context.AnalysisInjected,
+		CacheHit:                  context.CacheHit,
+		CacheScope:                context.CacheScope,
 		FallbackUsed:              context.FallbackUsed,
 		FallbackReason:            context.FallbackReason,
 		HideResponseModel:         context.HideResponseModel,

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/mycostsaving"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,4 +64,26 @@ func TestBuildTaskCostSavingContextFallbackHasNoSaving(t *testing.T) {
 	require.NotNil(t, ctx)
 	assert.Equal(t, 96, ctx.ActualEstimatedQuota)
 	assert.Equal(t, 0, ctx.SavingQuota)
+}
+
+func TestSelectMyCostSavingExecutionModel(t *testing.T) {
+	match := mycostsaving.Match{
+		Strategy:         "auto",
+		ExecutorModel:    "gpt-5.4-mini",
+		ComplexModel:     "gpt-5",
+		MaxLowCostTokens: 1000,
+	}
+
+	assert.Equal(t, "gpt-5.4-mini", selectMyCostSavingExecutionModel(match, "gpt-5", 999))
+	assert.Equal(t, "gpt-5", selectMyCostSavingExecutionModel(match, "gpt-5", 1001))
+
+	match.ComplexModel = ""
+	assert.Equal(t, "gpt-5", selectMyCostSavingExecutionModel(match, "gpt-5", 1001))
+
+	match.Strategy = "direct"
+	assert.Equal(t, "gpt-5.4-mini", selectMyCostSavingExecutionModel(match, "gpt-5", 1001))
+
+	match.Strategy = "planner"
+	match.ComplexModel = "gpt-5"
+	assert.Equal(t, "gpt-5", selectMyCostSavingExecutionModel(match, "gpt-5.4-mini", 1001))
 }

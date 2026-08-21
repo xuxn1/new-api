@@ -25,5 +25,7 @@ export type MyCostSavingSettings = {
   'my_cost_saving.hide_response_model': boolean
   'my_cost_saving.max_planner_tokens': number
   'my_cost_saving.planner_prompt': string
+  'my_cost_saving.exact_cache_enabled': boolean
+  'my_cost_saving.exact_cache_ttl_seconds': number
+  'my_cost_saving.max_low_cost_prompt_tokens': number
 }
-

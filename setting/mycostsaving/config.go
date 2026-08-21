@@ -16,12 +16,18 @@ const (
 )
 
 type Rule struct {
-	Enabled       bool     `json:"enabled"`
-	Name          string   `json:"name"`
-	Groups        []string `json:"groups"`
-	Models        []string `json:"models"`
-	PlannerModel  string   `json:"planner_model,omitempty"`
-	ExecutorModel string   `json:"executor_model"`
+	Enabled          bool     `json:"enabled"`
+	Name             string   `json:"name"`
+	Groups           []string `json:"groups"`
+	Models           []string `json:"models"`
+	Strategy         string   `json:"strategy,omitempty"`
+	PlannerModel     string   `json:"planner_model,omitempty"`
+	ExecutorModel    string   `json:"executor_model"`
+	ComplexModel     string   `json:"complex_model,omitempty"`
+	MaxLowCostTokens int      `json:"max_low_cost_tokens,omitempty"`
+	CacheEnabled     *bool    `json:"cache_enabled,omitempty"`
+	CacheTTLSeconds  int      `json:"cache_ttl_seconds,omitempty"`
+	CacheScope       string   `json:"cache_scope,omitempty"`
 }
 
 type Settings struct {
@@ -33,12 +39,21 @@ type Settings struct {
 	HideResponseModel       bool   `json:"hide_response_model"`
 	MaxPlannerTokens        int    `json:"max_planner_tokens"`
 	PlannerPrompt           string `json:"planner_prompt"`
+	ExactCacheEnabled       bool   `json:"exact_cache_enabled"`
+	ExactCacheTTLSeconds    int    `json:"exact_cache_ttl_seconds"`
+	MaxLowCostPromptTokens  int    `json:"max_low_cost_prompt_tokens"`
 }
 
 type Match struct {
-	Rule          Rule
-	PlannerModel  string
-	ExecutorModel string
+	Rule             Rule
+	Strategy         string
+	PlannerModel     string
+	ExecutorModel    string
+	ComplexModel     string
+	MaxLowCostTokens int
+	CacheEnabled     bool
+	CacheTTLSeconds  int
+	CacheScope       string
 }
 
 var defaultSettings = Settings{
@@ -50,10 +65,15 @@ var defaultSettings = Settings{
 	HideResponseModel:       true,
 	MaxPlannerTokens:        512,
 	PlannerPrompt:           defaultPlannerPrompt,
+	ExactCacheEnabled:       true,
+	ExactCacheTTLSeconds:    600,
+	MaxLowCostPromptTokens:  2000,
 }
 
 const defaultPlannerPrompt = "Analyze the user's request, identify the concrete work to do, and return a concise execution plan. Do not answer the user directly."
 const maxPlannerTokensLimit = math.MaxInt32 / 2
+const maxCacheTTLSecondsLimit = 86400 * 30
+const maxLowCostPromptTokensLimit = math.MaxInt32 / 2
 
 func init() {
 	config.GlobalConfig.Register(ConfigName, &defaultSettings)
@@ -69,12 +89,24 @@ func ValidateRulesJSON(value string) error {
 }
 
 func ValidateMaxPlannerTokens(value string) error {
+	return validateBoundedInt(value, "max_planner_tokens", 0, maxPlannerTokensLimit)
+}
+
+func ValidateExactCacheTTLSeconds(value string) error {
+	return validateBoundedInt(value, "exact_cache_ttl_seconds", 0, maxCacheTTLSecondsLimit)
+}
+
+func ValidateMaxLowCostPromptTokens(value string) error {
+	return validateBoundedInt(value, "max_low_cost_prompt_tokens", 0, maxLowCostPromptTokensLimit)
+}
+
+func validateBoundedInt(value string, name string, minValue int, maxValue int) error {
 	n, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
 		return err
 	}
-	if n < 0 || n > maxPlannerTokensLimit {
-		return fmt.Errorf("max_planner_tokens must be between 0 and %d", maxPlannerTokensLimit)
+	if n < minValue || n > maxValue {
+		return fmt.Errorf("%s must be between %d and %d", name, minValue, maxValue)
 	}
 	return nil
 }
@@ -98,13 +130,18 @@ func MatchRule(group string, modelName string, isStream bool) (Match, bool) {
 		if !rule.Enabled {
 			continue
 		}
+		strategy := normalizeStrategy(rule.Strategy)
 		plannerModel := strings.TrimSpace(rule.PlannerModel)
 		executorModel := strings.TrimSpace(rule.ExecutorModel)
-		if plannerModel == "" {
-			plannerModel = modelName
-		}
 		if executorModel == "" {
 			continue
+		}
+		if plannerModel == "" {
+			if strategy == "planner" {
+				plannerModel = modelName
+			} else {
+				plannerModel = executorModel
+			}
 		}
 		if !matchesAny(group, rule.Groups) {
 			continue
@@ -112,14 +149,52 @@ func MatchRule(group string, modelName string, isStream bool) (Match, bool) {
 		if !matchesModel(modelName, rule.Models) {
 			continue
 		}
+		cacheEnabled := settings.ExactCacheEnabled
+		if rule.CacheEnabled != nil {
+			cacheEnabled = *rule.CacheEnabled
+		}
+		cacheTTLSeconds := settings.ExactCacheTTLSeconds
+		if rule.CacheTTLSeconds > 0 {
+			cacheTTLSeconds = rule.CacheTTLSeconds
+		}
+		maxLowCostTokens := settings.MaxLowCostPromptTokens
+		if rule.MaxLowCostTokens > 0 {
+			maxLowCostTokens = rule.MaxLowCostTokens
+		}
 		return Match{
-			Rule:          rule,
-			PlannerModel:  plannerModel,
-			ExecutorModel: executorModel,
+			Rule:             rule,
+			Strategy:         strategy,
+			PlannerModel:     plannerModel,
+			ExecutorModel:    executorModel,
+			ComplexModel:     strings.TrimSpace(rule.ComplexModel),
+			MaxLowCostTokens: maxLowCostTokens,
+			CacheEnabled:     cacheEnabled,
+			CacheTTLSeconds:  cacheTTLSeconds,
+			CacheScope:       normalizeCacheScope(rule.CacheScope),
 		}, true
 	}
 
 	return Match{}, false
+}
+
+func normalizeStrategy(strategy string) string {
+	switch strings.ToLower(strings.TrimSpace(strategy)) {
+	case "planner":
+		return "planner"
+	case "auto":
+		return "auto"
+	default:
+		return "direct"
+	}
+}
+
+func normalizeCacheScope(scope string) string {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "user":
+		return "user"
+	default:
+		return "group"
+	}
 }
 
 func parseRules(value string) ([]Rule, error) {

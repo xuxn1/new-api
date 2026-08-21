@@ -114,6 +114,12 @@ function CostSavingQuotaCell(props: {
   )
 }
 
+function getProfitQuota(row: TaskLog): number {
+  const billed = row.cost_saving_context?.original_billed_quota ?? row.quota ?? 0
+  const internal = row.cost_saving_context?.actual_estimated_quota ?? 0
+  return Math.max(billed - internal, 0)
+}
+
 export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
   const { t } = useTranslation()
   const columns: ColumnDef<TaskLog>[] = [
@@ -242,6 +248,15 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
           <CostSavingQuotaCell
             value={row.original.cost_saving_context?.actual_estimated_quota}
           />
+        ),
+        size: 120,
+      },
+      {
+        id: 'profit_cost',
+        header: t('Profit'),
+        accessorFn: (row) => getProfitQuota(row),
+        cell: ({ row }) => (
+          <CostSavingQuotaCell value={getProfitQuota(row.original)} positive />
         ),
         size: 120,
       },

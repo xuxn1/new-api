@@ -18,8 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Bot, Calculator, EyeOff, Route, ShieldCheck } from 'lucide-react'
-import { useMemo, useRef } from 'react'
-import type { ReactNode } from 'react'
+import { type FormEvent, type ReactNode, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -52,6 +51,8 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import type { MyCostSavingSettings } from './types'
 
 const MAX_PLANNER_TOKENS = 1073741823
+const MAX_CACHE_TTL_SECONDS = 2592000
+const MAX_LOW_COST_PROMPT_TOKENS = 1073741823
 
 const exampleRules = JSON.stringify(
   [
@@ -60,26 +61,18 @@ const exampleRules = JSON.stringify(
       name: 'vip gpt-5',
       groups: ['vip'],
       models: ['gpt-5*'],
-      planner_model: 'gpt-5.4-mini',
+      strategy: 'auto',
       executor_model: 'gpt-5.4-mini',
+      complex_model: 'gpt-5',
+      max_low_cost_tokens: 2000,
+      cache_enabled: true,
+      cache_ttl_seconds: 600,
+      cache_scope: 'group',
     },
   ],
   null,
   2
 )
-
-type MyCostSavingFormInput = {
-  my_cost_saving: {
-    enabled: boolean
-    rules_json: string
-    inject_analysis_to_request: boolean
-    fallback_to_original: boolean
-    disable_for_stream: boolean
-    hide_response_model: boolean
-    max_planner_tokens: number
-    planner_prompt: string
-  }
-}
 
 type NormalizedMyCostSavingValues = {
   'my_cost_saving.enabled': boolean
@@ -90,6 +83,9 @@ type NormalizedMyCostSavingValues = {
   'my_cost_saving.hide_response_model': boolean
   'my_cost_saving.max_planner_tokens': number
   'my_cost_saving.planner_prompt': string
+  'my_cost_saving.exact_cache_enabled': boolean
+  'my_cost_saving.exact_cache_ttl_seconds': number
+  'my_cost_saving.max_low_cost_prompt_tokens': number
 }
 
 const createMyCostSavingSchema = (
@@ -120,6 +116,31 @@ const createMyCostSavingSchema = (
       fallback_to_original: z.boolean(),
       disable_for_stream: z.boolean(),
       hide_response_model: z.boolean(),
+      exact_cache_enabled: z.boolean(),
+      exact_cache_ttl_seconds: z.coerce
+        .number()
+        .int(t('Enter a positive integer'))
+        .min(0, t('Cache TTL must be between 0 and {{max}} seconds', {
+          max: MAX_CACHE_TTL_SECONDS,
+        }))
+        .max(
+          MAX_CACHE_TTL_SECONDS,
+          t('Cache TTL must be between 0 and {{max}} seconds', {
+            max: MAX_CACHE_TTL_SECONDS,
+          })
+        ),
+      max_low_cost_prompt_tokens: z.coerce
+        .number()
+        .int(t('Enter a positive integer'))
+        .min(0, t('Low-cost prompt threshold must be between 0 and {{max}}', {
+          max: MAX_LOW_COST_PROMPT_TOKENS,
+        }))
+        .max(
+          MAX_LOW_COST_PROMPT_TOKENS,
+          t('Low-cost prompt threshold must be between 0 and {{max}}', {
+            max: MAX_LOW_COST_PROMPT_TOKENS,
+          })
+        ),
       max_planner_tokens: z.coerce
         .number()
         .int(t('Enter a positive integer'))
@@ -137,6 +158,7 @@ const createMyCostSavingSchema = (
   })
 
 type MyCostSavingSchema = ReturnType<typeof createMyCostSavingSchema>
+type MyCostSavingFormInput = z.input<MyCostSavingSchema>
 type MyCostSavingFormValues = z.output<MyCostSavingSchema>
 
 type MyCostSavingSectionProps = {
@@ -178,6 +200,12 @@ function buildFormDefaults(
       max_planner_tokens:
         defaults['my_cost_saving.max_planner_tokens'] ?? 512,
       planner_prompt: defaults['my_cost_saving.planner_prompt'] ?? '',
+      exact_cache_enabled:
+        defaults['my_cost_saving.exact_cache_enabled'] ?? true,
+      exact_cache_ttl_seconds:
+        defaults['my_cost_saving.exact_cache_ttl_seconds'] ?? 600,
+      max_low_cost_prompt_tokens:
+        defaults['my_cost_saving.max_low_cost_prompt_tokens'] ?? 2000,
     },
   }
 }
@@ -201,6 +229,12 @@ function normalizeDefaults(
       defaults['my_cost_saving.max_planner_tokens'] ?? 512,
     'my_cost_saving.planner_prompt':
       defaults['my_cost_saving.planner_prompt'] ?? '',
+    'my_cost_saving.exact_cache_enabled':
+      defaults['my_cost_saving.exact_cache_enabled'] ?? true,
+    'my_cost_saving.exact_cache_ttl_seconds':
+      defaults['my_cost_saving.exact_cache_ttl_seconds'] ?? 600,
+    'my_cost_saving.max_low_cost_prompt_tokens':
+      defaults['my_cost_saving.max_low_cost_prompt_tokens'] ?? 2000,
   }
 }
 
@@ -222,6 +256,12 @@ function normalizeFormValues(
     'my_cost_saving.max_planner_tokens':
       values.my_cost_saving.max_planner_tokens,
     'my_cost_saving.planner_prompt': values.my_cost_saving.planner_prompt,
+    'my_cost_saving.exact_cache_enabled':
+      values.my_cost_saving.exact_cache_enabled,
+    'my_cost_saving.exact_cache_ttl_seconds':
+      values.my_cost_saving.exact_cache_ttl_seconds,
+    'my_cost_saving.max_low_cost_prompt_tokens':
+      values.my_cost_saving.max_low_cost_prompt_tokens,
   }
 }
 
@@ -289,29 +329,35 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
 
     baselineRef.current = normalized
   }
+  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    void form.handleSubmit(onSubmit)(event)
+  }
+  const handleSave = () => {
+    void form.handleSubmit(onSubmit)()
+  }
 
   return (
     <SettingsSection title={t('my-Cost Saving')}>
       <Form {...form}>
-        <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
+        <SettingsForm onSubmit={handleFormSubmit}>
           <SettingsPageFormActions
-            onSave={form.handleSubmit(onSubmit)}
+            onSave={handleSave}
             isSaving={updateOption.isPending}
           />
 
           <div className='grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4'>
             <CapabilityCard
               icon={<Route className='size-4' aria-hidden='true' />}
-              title={t('Planner then executor')}
+              title={t('Cache, then route')}
               description={t(
-                'The original request is analyzed internally before the executor model answers the user.'
+                'Exact matches can be served from cache before any upstream model is called.'
               )}
             />
             <CapabilityCard
               icon={<Calculator className='size-4' aria-hidden='true' />}
               title={t('Bill original model')}
               description={t(
-                'User billing remains based on the requested model while admin logs keep the internal estimate.'
+                'Users are still charged by the requested model while admin logs keep internal cost estimates.'
               )}
             />
             <CapabilityCard
@@ -323,9 +369,9 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
             />
             <CapabilityCard
               icon={<ShieldCheck className='size-4' aria-hidden='true' />}
-              title={t('Fallback protection')}
+              title={t('Quality guardrail')}
               description={t(
-                'If internal planning or execution fails, requests can return to the original model automatically.'
+                'Auto rules can keep large prompts on the original or a stronger configured model.'
               )}
             />
           </div>
@@ -339,7 +385,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                   <FormLabel>{t('Enable my-cost saving')}</FormLabel>
                   <FormDescription>
                     {t(
-                      'Only matching group and model rules will use the internal planner and executor flow.'
+                      'Matching group and model rules can use exact cache, low-cost routing, or optional planner execution.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>
@@ -375,7 +421,7 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Each enabled rule matches groups and requested models, then selects planner_model and executor_model.'
+                      'Rules match groups and requested models, then choose direct, auto, or planner strategy.'
                     )}
                   </FormDescription>
                   <FormMessage />
@@ -393,6 +439,31 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
                   {exampleRules}
                 </pre>
               </div>
+
+              <FormField
+                control={form.control}
+                name='my_cost_saving.max_low_cost_prompt_tokens'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Low-cost prompt threshold')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={MAX_LOW_COST_PROMPT_TOKENS}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Auto rules use the low-cost model up to this estimated prompt size.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}
@@ -445,6 +516,52 @@ export function MyCostSavingSection(props: MyCostSavingSectionProps) {
           />
 
           <div className='grid min-w-0 gap-3 md:grid-cols-2'>
+            <FormField
+              control={form.control}
+              name='my_cost_saving.exact_cache_enabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Enable exact cache')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Identical non-stream requests can be answered from cache while billing stays on the requested model.'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='my_cost_saving.exact_cache_ttl_seconds'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Exact cache TTL')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={MAX_CACHE_TTL_SECONDS}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Use 0 to disable exact cache storage globally.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name='my_cost_saving.inject_analysis_to_request'

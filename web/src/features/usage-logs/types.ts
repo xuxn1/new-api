@@ -250,12 +250,16 @@ export interface LogOtherData {
 export interface MyCostSavingAdminInfo {
   enabled?: boolean
   rule_name?: string
+  strategy?: string
   original_model?: string
   planner_model?: string
   executor_model?: string
   planner_upstream_model?: string
   executor_upstream_model?: string
   actual_upstream_model?: string
+  cache_hit?: boolean
+  cache_scope?: string
+  cache_key?: string
   planner_channel_id?: number
   planner_channel_name?: string
   planner_channel_type?: number
