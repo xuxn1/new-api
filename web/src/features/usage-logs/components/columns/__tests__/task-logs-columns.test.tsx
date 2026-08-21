@@ -83,6 +83,42 @@ describe('task log columns', () => {
     )
   })
 
+  test('hides admin cost columns from non-admin task log views', async () => {
+    let columns: ColumnDef<TaskLog>[] = []
+
+    render(
+      <ColumnsProbe
+        isAdmin={false}
+        onColumns={(nextColumns) => {
+          columns = nextColumns
+        }}
+      />
+    )
+
+    await waitFor(() => expect(columns).toHaveLength(6))
+
+    expect(
+      columns.map((column) => {
+        const typedColumn = column as TaskLogColumn
+        return typedColumn.id ?? typedColumn.accessorKey
+      })
+    ).toEqual([
+      'submit_time',
+      'task_id',
+      'duration',
+      'status',
+      'progress',
+      'fail_reason',
+    ])
+    expect(
+      columns.some((column) =>
+        ['execution_model', 'billed_cost', 'internal_cost', 'profit_cost', 'saved_cost'].includes(
+          String((column as TaskLogColumn).id ?? (column as TaskLogColumn).accessorKey)
+        )
+      )
+    ).toBe(false)
+  })
+
   test('caps profit at zero when internal cost exceeds billed cost', async () => {
     let columns: ColumnDef<TaskLog>[] = []
 

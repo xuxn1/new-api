@@ -16,7 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { MyCostSavingSettings } from '../types'
@@ -25,6 +27,25 @@ vi.mock('../../hooks/use-update-option', () => ({
   useUpdateOption: () => ({
     mutateAsync: async () => ({ success: true }),
     isPending: false,
+  }),
+}))
+
+vi.mock('@/features/users/api', () => ({
+  getGroups: async () => ({
+    success: true,
+    data: ['beta', 'vip'],
+  }),
+}))
+
+vi.mock('@/features/models/api', () => ({
+  getModels: async () => ({
+    success: true,
+    data: {
+      items: [{ model_name: 'gpt-5.4-mini' }, { model_name: 'gpt-5' }],
+      total: 2,
+      page: 1,
+      page_size: 1000,
+    },
   }),
 }))
 
@@ -44,9 +65,35 @@ const defaultValues: MyCostSavingSettings = {
   'my_cost_saving.max_low_cost_prompt_tokens': 2000,
 }
 
+function renderSection() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+
+  const rendered = render(
+    <QueryClientProvider client={queryClient}>
+      <MyCostSavingSection defaultValues={defaultValues} />
+    </QueryClientProvider>
+  )
+
+  return { ...rendered, queryClient }
+}
+
 describe('my cost saving section', () => {
-  test('renders the exact cache and low-cost controls with defaults', () => {
-    render(<MyCostSavingSection defaultValues={defaultValues} />)
+  test('renders the visual rule editor and hides the raw JSON editor', async () => {
+    const user = userEvent.setup()
+    renderSection()
+
+    expect(
+      screen.getByRole('heading', { name: 'Group and model rules' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('switch', { name: 'Enable my-cost saving' })
+    ).toHaveAttribute('aria-checked', 'true')
+    expect(screen.queryByText('Rules JSON')).not.toBeInTheDocument()
 
     expect(
       screen.getByRole('switch', { name: 'Enable exact cache' })
@@ -57,5 +104,18 @@ describe('my cost saving section', () => {
     expect(
       screen.getByRole('spinbutton', { name: 'Low-cost prompt threshold' })
     ).toHaveValue(2000)
+
+    await user.click(screen.getAllByRole('button', { name: 'Add Rule' })[0])
+
+    expect(await screen.findByText('Rule 1')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Enabled' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    )
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Move up' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Move down' })).toBeDisabled()
+    expect(screen.getByText('Groups')).toBeInTheDocument()
+    expect(screen.getByText('Models')).toBeInTheDocument()
   })
 })
