@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"hash/fnv"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -663,6 +664,34 @@ func ClearCurrentChannelAffinityCache(c *gin.Context) bool {
 		}
 	}
 	return false
+}
+
+func ClearChannelAffinityOnFailure(c *gin.Context, err *types.NewAPIError) bool {
+	if !shouldClearChannelAffinityOnFailure(err) {
+		return false
+	}
+	return ClearCurrentChannelAffinityCache(c)
+}
+
+func shouldClearChannelAffinityOnFailure(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if types.IsChannelError(err) {
+		return true
+	}
+
+	code := err.StatusCode
+	if code < 100 || code > 599 {
+		return true
+	}
+	if code == http.StatusUnauthorized || code == http.StatusForbidden || code == http.StatusTooManyRequests {
+		return true
+	}
+	if code/100 == 5 {
+		return true
+	}
+	return operation_setting.ShouldRetryByStatusCode(code)
 }
 
 func ShouldKeepChannelAffinityOnChannelDisabled() bool {

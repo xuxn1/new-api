@@ -3,12 +3,14 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -43,7 +45,7 @@ func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
 func GetGroupEnabledModels(group string) []string {
 	var models []string
 	// Find distinct models
-	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
+	DB.Table("abilities").Where(commonGroupColumn()+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
 	return models
 }
 
@@ -65,7 +67,7 @@ func getPriority(group string, model string, retry int) (int, error) {
 	var priorities []int
 	err := DB.Model(&Ability{}).
 		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Where(commonGroupColumn()+" = ? and model = ? and enabled = ?", group, model, true).
 		Order("priority DESC").              // 按优先级降序排序
 		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
 
@@ -91,59 +93,109 @@ func getPriority(group string, model string, retry int) (int, error) {
 }
 
 func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
-	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
+	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupColumn()+" = ? and model = ? and enabled = ?", group, model, true)
+	channelQuery := DB.Where(commonGroupColumn()+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
 	if retry != 0 {
 		priority, err := getPriority(group, model, retry)
 		if err != nil {
 			return nil, err
 		} else {
-			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
+			channelQuery = DB.Where(commonGroupColumn()+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
 		}
 	}
 
 	return channelQuery, nil
 }
 
-func GetChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
-	var abilities []Ability
-
-	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
+func GetChannel(group string, model string, retry int, requestPath string, excludedChannelIDs map[int]struct{}) (*Channel, error) {
+	abilities, err := getSatisfiedAbilities(group, model, requestPath, excludedChannelIDs)
 	if err != nil {
 		return nil, err
 	}
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) || common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
-	} else {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
+	if len(abilities) == 0 {
+		normalizedModel := ratio_setting.FormatMatchingModelName(model)
+		if normalizedModel != model {
+			abilities, err = getSatisfiedAbilities(group, normalizedModel, requestPath, excludedChannelIDs)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
+	if len(abilities) == 0 {
+		return nil, nil
+	}
+
+	priorityToAbilities := make(map[int64][]Ability, len(abilities))
+	var sortedPriorities []int64
+	for _, ability := range abilities {
+		priority := int64(0)
+		if ability.Priority != nil {
+			priority = *ability.Priority
+		}
+		if _, ok := priorityToAbilities[priority]; !ok {
+			sortedPriorities = append(sortedPriorities, priority)
+		}
+		priorityToAbilities[priority] = append(priorityToAbilities[priority], ability)
+	}
+	sort.Slice(sortedPriorities, func(i, j int) bool {
+		return sortedPriorities[i] > sortedPriorities[j]
+	})
+	if retry < 0 {
+		retry = 0
+	}
+	if retry >= len(sortedPriorities) {
+		retry = len(sortedPriorities) - 1
+	}
+	abilities = priorityToAbilities[sortedPriorities[retry]]
+
+	channel := Channel{}
+	weightSum := uint(0)
+	for _, ability := range abilities {
+		weightSum += ability.Weight + 10
+	}
+	weight := common.GetRandomInt(int(weightSum))
+	for _, ability := range abilities {
+		weight -= int(ability.Weight) + 10
+		if weight <= 0 {
+			channel.Id = ability.ChannelId
+			break
+		}
+	}
+	err = DB.First(&channel, "id = ?", channel.Id).Error
+	return &channel, err
+}
+
+func getSatisfiedAbilities(group string, model string, requestPath string, excludedChannelIDs map[int]struct{}) ([]Ability, error) {
+	var abilities []Ability
+	err := DB.Model(&Ability{}).
+		Where(commonGroupColumn()+" = ? and model = ? and enabled = ?", group, model, true).
+		Order("priority DESC, weight DESC").
+		Find(&abilities).Error
 	if err != nil {
 		return nil, err
 	}
 	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
-	channel := Channel{}
-	if len(abilities) > 0 {
-		// Randomly choose one
-		weightSum := uint(0)
-		for _, ability_ := range abilities {
-			weightSum += ability_.Weight + 10
-		}
-		// Randomly choose one
-		weight := common.GetRandomInt(int(weightSum))
-		for _, ability_ := range abilities {
-			weight -= int(ability_.Weight) + 10
-			//log.Printf("weight: %d, ability weight: %d", weight, *ability_.Weight)
-			if weight <= 0 {
-				channel.Id = ability_.ChannelId
-				break
-			}
-		}
-	} else {
-		return nil, nil
+	if len(excludedChannelIDs) == 0 {
+		return abilities, nil
 	}
-	err = DB.First(&channel, "id = ?", channel.Id).Error
-	return &channel, err
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		if _, excluded := excludedChannelIDs[ability.ChannelId]; excluded {
+			continue
+		}
+		filtered = append(filtered, ability)
+	}
+	return filtered, nil
+}
+
+func commonGroupColumn() string {
+	if commonGroupCol != "" {
+		return commonGroupCol
+	}
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		return `"group"`
+	}
+	return "`group`"
 }
 
 // filterAbilitiesByRequestPathAndModel restricts candidates by request path and

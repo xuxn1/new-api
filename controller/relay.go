@@ -197,6 +197,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
+			if channel != nil {
+				addUsedChannel(c, channel.Id)
+				processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), channelErr)
+				retryParam.ExcludeChannel(channel.Id)
+				if shouldRetry(c, channelErr, common.RetryTimes-retryParam.GetRetry()) {
+					continue
+				}
+			}
 			break
 		}
 		addUsedChannel(c, channel.Id)
@@ -237,6 +245,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+		retryParam.ExcludeChannel(channel.Id)
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -323,7 +332,7 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 	if newAPIError != nil {
-		return nil, newAPIError
+		return channel, newAPIError
 	}
 	return channel, nil
 }
@@ -332,10 +341,10 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if openaiErr == nil {
 		return false
 	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-		return false
-	}
 	if types.IsChannelError(openaiErr) {
+		if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+			return false
+		}
 		return true
 	}
 	if types.IsSkipRetryError(openaiErr) {
@@ -362,6 +371,7 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
+	service.ClearChannelAffinityOnFailure(c, err)
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
@@ -538,6 +548,18 @@ func RelayTask(c *gin.Context) {
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
+				if channel != nil {
+					addUsedChannel(c, channel.Id)
+					processChannelError(c,
+						*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
+							common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
+						channelErr)
+					retryParam.ExcludeChannel(channel.Id)
+					if shouldRetry(c, channelErr, common.RetryTimes-retryParam.GetRetry()) {
+						taskErr = nil
+						continue
+					}
+				}
 				break
 			}
 		}
@@ -564,6 +586,7 @@ func RelayTask(c *gin.Context) {
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+			retryParam.ExcludeChannel(channel.Id)
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {
@@ -622,9 +645,6 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
-		return false
-	}
-	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
 	if retryTimes <= 0 {

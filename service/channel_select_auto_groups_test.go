@@ -22,6 +22,8 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	originalDB := model.DB
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalRetryTimes := common.RetryTimes
 	originalAutoGroups := setting.AutoGroups2JsonString()
@@ -34,8 +36,11 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
 	model.DB = db
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	common.SetLogDatabaseType(common.DatabaseTypeSQLite)
 	common.MemoryCacheEnabled = true
 	common.RetryTimes = 0
+	model.InitChannelCache()
 
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`[]`))
 	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
@@ -44,6 +49,8 @@ func setupChannelSelectAutoGroupsTest(t *testing.T) *gorm.DB {
 
 	t.Cleanup(func() {
 		model.DB = originalDB
+		common.SetMainDatabaseType(originalMainDatabaseType)
+		common.SetLogDatabaseType(originalLogDatabaseType)
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.RetryTimes = originalRetryTimes
 		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))
@@ -68,6 +75,29 @@ func createChannelSelectAutoGroupsChannel(t *testing.T, db *gorm.DB, id int, gro
 	t.Helper()
 	priority := int64(0)
 	weight := uint(100)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:       id,
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      fmt.Sprintf("key-%d", id),
+		Status:   common.ChannelStatusEnabled,
+		Name:     fmt.Sprintf("channel-%d", id),
+		Weight:   &weight,
+		Models:   modelName,
+		Group:    group,
+		Priority: &priority,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     group,
+		Model:     modelName,
+		ChannelId: id,
+		Enabled:   true,
+		Priority:  &priority,
+		Weight:    weight,
+	}).Error)
+}
+
+func createChannelSelectPriorityChannel(t *testing.T, db *gorm.DB, id int, group, modelName string, priority int64, weight uint) {
+	t.Helper()
 	require.NoError(t, db.Create(&model.Channel{
 		Id:       id,
 		Type:     constant.ChannelTypeOpenAI,
@@ -126,4 +156,87 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	assert.Equal(t, 2102, second.Id)
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
+}
+
+func TestCacheGetRandomSatisfiedChannelSkipsExcludedFailedChannel(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	const modelName = "failover-runtime-model"
+	createChannelSelectPriorityChannel(t, db, 3101, "default", modelName, 10, 100)
+	createChannelSelectPriorityChannel(t, db, 3102, "default", modelName, 10, 100)
+	createChannelSelectPriorityChannel(t, db, 3103, "default", modelName, 5, 100)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	retry := 0
+	param := &RetryParam{
+		Ctx:         ctx,
+		TokenGroup:  "default",
+		ModelName:   modelName,
+		RequestPath: "/v1/chat/completions",
+		Retry:       &retry,
+	}
+	param.ExcludeChannel(3101)
+
+	channel, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 3102, channel.Id)
+	assert.Equal(t, "default", selectedGroup)
+}
+
+func TestCacheGetRandomSatisfiedChannelFallsBackToLowerPriorityWhenTopPriorityFails(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	const modelName = "fallback-runtime-model"
+	createChannelSelectPriorityChannel(t, db, 3201, "default", modelName, 10, 100)
+	createChannelSelectPriorityChannel(t, db, 3202, "default", modelName, 10, 100)
+	createChannelSelectPriorityChannel(t, db, 3203, "default", modelName, 5, 100)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	retry := 0
+	param := &RetryParam{
+		Ctx:         ctx,
+		TokenGroup:  "default",
+		ModelName:   modelName,
+		RequestPath: "/v1/chat/completions",
+		Retry:       &retry,
+	}
+	param.ExcludeChannel(3201)
+	param.ExcludeChannel(3202)
+
+	channel, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 3203, channel.Id)
+	assert.Equal(t, "default", selectedGroup)
+}
+
+func TestCacheGetRandomSatisfiedChannelSkipsExcludedFailedChannelWithoutMemoryCache(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	common.MemoryCacheEnabled = false
+	const modelName = "db-failover-runtime-model"
+	createChannelSelectPriorityChannel(t, db, 3301, "default", modelName, 10, 100)
+	createChannelSelectPriorityChannel(t, db, 3302, "default", modelName, 10, 100)
+	createChannelSelectPriorityChannel(t, db, 3303, "default", modelName, 5, 100)
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	retry := 0
+	param := &RetryParam{
+		Ctx:         ctx,
+		TokenGroup:  "default",
+		ModelName:   modelName,
+		RequestPath: "/v1/chat/completions",
+		Retry:       &retry,
+	}
+	param.ExcludeChannel(3301)
+	param.ExcludeChannel(3302)
+
+	channel, selectedGroup, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 3303, channel.Id)
+	assert.Equal(t, "default", selectedGroup)
 }

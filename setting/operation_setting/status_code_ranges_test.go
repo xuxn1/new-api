@@ -80,6 +80,16 @@ func TestShouldRetryByStatusCode_DefaultMatchesLegacyBehavior(t *testing.T) {
 	require.True(t, ShouldRetryByStatusCode(599))
 }
 
+func TestShouldDisableByStatusCode_DefaultCoversCommonUpstreamFailures(t *testing.T) {
+	require.True(t, ShouldDisableByStatusCode(401))
+	require.True(t, ShouldDisableByStatusCode(403))
+	require.True(t, ShouldDisableByStatusCode(429))
+	require.True(t, ShouldDisableByStatusCode(500))
+	require.True(t, ShouldDisableByStatusCode(599))
+	require.False(t, ShouldDisableByStatusCode(400))
+	require.False(t, ShouldDisableByStatusCode(200))
+}
+
 func TestIsAlwaysSkipRetryStatusCode(t *testing.T) {
 	require.True(t, IsAlwaysSkipRetryStatusCode(504))
 	require.True(t, IsAlwaysSkipRetryStatusCode(524))

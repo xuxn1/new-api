@@ -89,12 +89,13 @@ func TestRelayErrorHandlerTruncatesInvalidJSONBodyInLog(t *testing.T) {
 
 	require.NotNil(t, newAPIError)
 	require.Equal(t, "bad response status code 500", newAPIError.Error())
+	require.Equal(t, types.ErrorCodeBadResponseStatusCode, newAPIError.GetErrorCode())
 	require.Contains(t, logBuffer.String(), "[truncated")
 	require.Contains(t, logBuffer.String(), fmt.Sprintf("original_length=%d", len(body)))
 	require.NotContains(t, logBuffer.String(), strings.Repeat("b", common.LocalLogContentLimit+1))
 }
 
-func TestRelayErrorHandlerKeepsStructuredErrorMessage(t *testing.T) {
+func TestRelayErrorHandlerHidesStructuredErrorMessage(t *testing.T) {
 	message := strings.Repeat("c", common.LocalLogContentLimit+256)
 	body := `{"message":"` + message + `"}`
 	resp := &http.Response{
@@ -105,10 +106,11 @@ func TestRelayErrorHandlerKeepsStructuredErrorMessage(t *testing.T) {
 	newAPIError := RelayErrorHandler(context.Background(), resp, false)
 
 	require.NotNil(t, newAPIError)
-	require.Equal(t, message, newAPIError.Error())
+	require.Equal(t, "bad response status code 500", newAPIError.Error())
+	require.Equal(t, types.ErrorCodeBadResponseStatusCode, newAPIError.GetErrorCode())
 }
 
-func TestRelayErrorHandlerKeepsOpenAIErrorMessage(t *testing.T) {
+func TestRelayErrorHandlerHidesOpenAIErrorMessage(t *testing.T) {
 	message := strings.Repeat("d", common.LocalLogContentLimit+256)
 	body := `{"error":{"message":"` + message + `","type":"server_error","code":"server_error"}}`
 	resp := &http.Response{
@@ -119,7 +121,22 @@ func TestRelayErrorHandlerKeepsOpenAIErrorMessage(t *testing.T) {
 	newAPIError := RelayErrorHandler(context.Background(), resp, false)
 
 	require.NotNil(t, newAPIError)
-	require.Equal(t, message, newAPIError.Error())
+	require.Equal(t, "bad response status code 500", newAPIError.Error())
+	require.Equal(t, types.ErrorCodeBadResponseStatusCode, newAPIError.GetErrorCode())
+}
+
+func TestRelayErrorHandlerShowsStructuredErrorMessageWhenRequested(t *testing.T) {
+	message := strings.Repeat("d", common.LocalLogContentLimit+256)
+	body := `{"error":{"message":"` + message + `","type":"server_error","code":"server_error"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, true)
+
+	require.NotNil(t, newAPIError)
+	require.Contains(t, newAPIError.Error(), message)
 }
 
 func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {

@@ -85,16 +85,15 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 }
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
-	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
-
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return
+		return types.NewOpenAIError(fmt.Errorf("bad response status code %d", resp.StatusCode), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	}
 	CloseResponseBodyGracefully(resp)
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
+	genericErr := types.NewOpenAIError(fmt.Errorf("bad response status code %d", resp.StatusCode), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	buildErrWithBody := func(message string) error {
 		if message == "" {
 			return fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, responseBodyText)
@@ -104,13 +103,23 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 
 	err = common.Unmarshal(responseBody, &errResponse)
 	if err != nil {
-		if showBodyWhenFail {
-			newApiErr.Err = buildErrWithBody("")
-		} else {
+		if !showBodyWhenFail {
 			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
-			newApiErr.Err = fmt.Errorf("bad response status code %d", resp.StatusCode)
+			return genericErr
 		}
+		newApiErr = genericErr
+		newApiErr.Err = buildErrWithBody("")
 		return
+	}
+
+	if !showBodyWhenFail {
+		message := strings.TrimSpace(errResponse.ToMessage())
+		if message == "" {
+			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, body: %s", resp.StatusCode, responseBodyPreview))
+		} else {
+			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, upstream message: %s", resp.StatusCode, common.LocalLogPreview(message)))
+		}
+		return genericErr
 	}
 
 	if common.GetJsonType(errResponse.Error) == "object" {
