@@ -89,6 +89,19 @@ func TestShouldGrantZeroRetryChannelFailoverForUpstreamQuota(t *testing.T) {
 	require.False(t, shouldGrantZeroRetryChannelFailover(ctx, err, 1, 0, false))
 }
 
+func TestShouldGrantZeroRetryChannelFailoverForUpstreamRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	err := types.NewOpenAIError(
+		errors.New("Upstream rate limit exceeded, please retry later"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusTooManyRequests,
+	)
+
+	require.True(t, shouldGrantZeroRetryChannelFailover(ctx, err, 0, 0, false))
+}
+
 func TestShouldGrantZeroRetryChannelFailoverSkipsSpecificChannel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -395,7 +395,7 @@ func shouldGrantZeroRetryChannelFailover(c *gin.Context, err *types.NewAPIError,
 	if types.IsSkipRetryError(err) {
 		return false
 	}
-	return types.IsChannelError(err) || service.IsUpstreamQuotaExhaustedError(err)
+	return types.IsChannelError(err) || service.IsUpstreamQuotaExhaustedError(err) || service.IsUpstreamRateLimitedError(err)
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {

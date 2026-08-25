@@ -108,6 +108,17 @@ func IsUpstreamQuotaExhaustedError(err *types.NewAPIError) bool {
 	return IsUpstreamQuotaExhaustedMessage(err.Error())
 }
 
+func IsUpstreamRateLimitedError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeInsufficientUserQuota, types.ErrorCodePreConsumeTokenQuotaFailed:
+		return false
+	}
+	return err.StatusCode == http.StatusTooManyRequests
+}
+
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {
 	if !common.AutomaticEnableChannelEnabled {
 		return false

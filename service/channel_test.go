@@ -28,3 +28,23 @@ func TestIsUpstreamQuotaExhaustedErrorIgnoresLocalUserQuota(t *testing.T) {
 
 	require.False(t, IsUpstreamQuotaExhaustedError(err))
 }
+
+func TestIsUpstreamRateLimitedError(t *testing.T) {
+	err := types.NewOpenAIError(
+		errors.New("Upstream rate limit exceeded, please retry later"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusTooManyRequests,
+	)
+
+	require.True(t, IsUpstreamRateLimitedError(err))
+}
+
+func TestIsUpstreamRateLimitedErrorIgnoresLocalUserQuota(t *testing.T) {
+	err := types.NewErrorWithStatusCode(
+		errors.New("user quota limited"),
+		types.ErrorCodeInsufficientUserQuota,
+		http.StatusTooManyRequests,
+	)
+
+	require.False(t, IsUpstreamRateLimitedError(err))
+}
