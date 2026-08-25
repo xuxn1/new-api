@@ -125,6 +125,21 @@ func TestRelayErrorHandlerHidesOpenAIErrorMessage(t *testing.T) {
 	require.Equal(t, types.ErrorCodeBadResponseStatusCode, newAPIError.GetErrorCode())
 }
 
+func TestRelayErrorHandlerClassifiesUpstreamQuotaMessage(t *testing.T) {
+	body := `{"error":{"message":"Insufficient account balance","type":"insufficient_quota","code":"insufficient_quota"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, false)
+
+	require.NotNil(t, newAPIError)
+	require.Equal(t, "Insufficient account balance", newAPIError.Error())
+	require.Equal(t, types.ErrorCodeChannelUpstreamQuotaExhausted, newAPIError.GetErrorCode())
+	require.Equal(t, http.StatusForbidden, newAPIError.StatusCode)
+}
+
 func TestRelayErrorHandlerShowsStructuredErrorMessageWhenRequested(t *testing.T) {
 	message := strings.Repeat("d", common.LocalLogContentLimit+256)
 	body := `{"error":{"message":"` + message + `","type":"server_error","code":"server_error"}}`

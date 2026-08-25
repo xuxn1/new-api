@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -62,6 +63,49 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	lowerMessage := strings.ToLower(err.Error())
 	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
 	return search
+}
+
+var upstreamQuotaExhaustedKeywords = []string{
+	"insufficient account balance",
+	"insufficient balance",
+	"account balance is insufficient",
+	"credit balance is too low",
+	"credit balance too low",
+	"your credit balance is too low",
+	"you exceeded your current quota",
+	"quota_not_enough",
+	"quota not enough",
+	"余额不足",
+	"额度不足",
+	"账户余额不足",
+	"账号余额不足",
+}
+
+func IsUpstreamQuotaExhaustedMessage(message string) bool {
+	message = strings.ToLower(strings.TrimSpace(message))
+	if message == "" {
+		return false
+	}
+	found, _ := AcSearch(message, upstreamQuotaExhaustedKeywords, true)
+	return found
+}
+
+func IsUpstreamQuotaExhaustedError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeInsufficientUserQuota, types.ErrorCodePreConsumeTokenQuotaFailed:
+		return false
+	case types.ErrorCodeChannelUpstreamQuotaExhausted:
+		return true
+	}
+	switch err.StatusCode {
+	case http.StatusPaymentRequired, http.StatusForbidden, http.StatusTooManyRequests:
+	default:
+		return false
+	}
+	return IsUpstreamQuotaExhaustedMessage(err.Error())
 }
 
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {

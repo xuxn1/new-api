@@ -72,3 +72,33 @@ func TestShouldRetryTaskRelayAfterAffinityUpstreamThrottle(t *testing.T) {
 
 	require.True(t, shouldRetryTaskRelay(ctx, 1001, taskErr, 1))
 }
+
+func TestShouldGrantZeroRetryChannelFailoverForUpstreamQuota(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	err := types.NewOpenAIError(
+		errors.New("Insufficient account balance"),
+		types.ErrorCodeChannelUpstreamQuotaExhausted,
+		http.StatusForbidden,
+	)
+
+	require.True(t, shouldGrantZeroRetryChannelFailover(ctx, err, 0, 0, false))
+	require.False(t, shouldGrantZeroRetryChannelFailover(ctx, err, 0, 0, true))
+	require.False(t, shouldGrantZeroRetryChannelFailover(ctx, err, 0, 1, false))
+	require.False(t, shouldGrantZeroRetryChannelFailover(ctx, err, 1, 0, false))
+}
+
+func TestShouldGrantZeroRetryChannelFailoverSkipsSpecificChannel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("specific_channel_id", 1001)
+	err := types.NewOpenAIError(
+		errors.New("Insufficient account balance"),
+		types.ErrorCodeChannelUpstreamQuotaExhausted,
+		http.StatusForbidden,
+	)
+
+	require.False(t, shouldGrantZeroRetryChannelFailover(ctx, err, 0, 0, false))
+}

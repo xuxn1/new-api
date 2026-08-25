@@ -190,8 +190,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
+	retryLimit := common.RetryTimes
+	zeroRetryChannelFailoverUsed := false
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	for ; retryParam.GetRetry() <= retryLimit; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
@@ -201,7 +203,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				addUsedChannel(c, channel.Id)
 				processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), channelErr)
 				retryParam.ExcludeChannel(channel.Id)
-				if shouldRetry(c, channelErr, common.RetryTimes-retryParam.GetRetry()) {
+				grantZeroRetryChannelFailover(c, channelErr, retryParam.GetRetry(), &retryLimit, &zeroRetryChannelFailoverUsed)
+				if shouldRetry(c, channelErr, retryLimit-retryParam.GetRetry()) {
 					continue
 				}
 			}
@@ -247,7 +250,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 		retryParam.ExcludeChannel(channel.Id)
 
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		grantZeroRetryChannelFailover(c, newAPIError, retryParam.GetRetry(), &retryLimit, &zeroRetryChannelFailoverUsed)
+		if !shouldRetry(c, newAPIError, retryLimit-retryParam.GetRetry()) {
 			break
 		}
 	}
@@ -367,6 +371,31 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 		return false
 	}
 	return operation_setting.ShouldRetryByStatusCode(code)
+}
+
+func grantZeroRetryChannelFailover(c *gin.Context, err *types.NewAPIError, retryIndex int, retryLimit *int, used *bool) {
+	if retryLimit == nil || used == nil {
+		return
+	}
+	if shouldGrantZeroRetryChannelFailover(c, err, retryIndex, *retryLimit, *used) {
+		*retryLimit = retryIndex + 1
+		*used = true
+	}
+}
+
+func shouldGrantZeroRetryChannelFailover(c *gin.Context, err *types.NewAPIError, retryIndex int, retryLimit int, used bool) bool {
+	if err == nil || used || retryLimit > 0 || retryIndex != 0 {
+		return false
+	}
+	if c != nil {
+		if _, ok := c.Get("specific_channel_id"); ok {
+			return false
+		}
+	}
+	if types.IsSkipRetryError(err) {
+		return false
+	}
+	return types.IsChannelError(err) || service.IsUpstreamQuotaExhaustedError(err)
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
@@ -530,8 +559,10 @@ func RelayTask(c *gin.Context) {
 		RequestPath: c.Request.URL.Path,
 		Retry:       common.GetPointer(0),
 	}
+	retryLimit := common.RetryTimes
+	zeroRetryChannelFailoverUsed := false
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	for ; retryParam.GetRetry() <= retryLimit; retryParam.IncreaseRetry() {
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
@@ -555,7 +586,8 @@ func RelayTask(c *gin.Context) {
 							common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 						channelErr)
 					retryParam.ExcludeChannel(channel.Id)
-					if shouldRetry(c, channelErr, common.RetryTimes-retryParam.GetRetry()) {
+					grantZeroRetryChannelFailover(c, channelErr, retryParam.GetRetry(), &retryLimit, &zeroRetryChannelFailoverUsed)
+					if shouldRetry(c, channelErr, retryLimit-retryParam.GetRetry()) {
 						taskErr = nil
 						continue
 					}
@@ -582,14 +614,18 @@ func RelayTask(c *gin.Context) {
 		}
 
 		if !taskErr.LocalError {
+			taskAPIError := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+				taskAPIError)
 			retryParam.ExcludeChannel(channel.Id)
+			if relayInfo.LockedChannel == nil {
+				grantZeroRetryChannelFailover(c, taskAPIError, retryParam.GetRetry(), &retryLimit, &zeroRetryChannelFailoverUsed)
+			}
 		}
 
-		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {
+		if !shouldRetryTaskRelay(c, channel.Id, taskErr, retryLimit-retryParam.GetRetry()) {
 			break
 		}
 	}

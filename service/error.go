@@ -119,6 +119,9 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		} else {
 			logger.LogError(ctx, fmt.Sprintf("bad response status code %d, upstream message: %s", resp.StatusCode, common.LocalLogPreview(message)))
 		}
+		if IsUpstreamQuotaExhaustedMessage(message) {
+			return types.NewOpenAIError(errors.New(message), types.ErrorCodeChannelUpstreamQuotaExhausted, resp.StatusCode)
+		}
 		return genericErr
 	}
 
